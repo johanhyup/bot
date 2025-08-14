@@ -1,0 +1,43 @@
+<?php
+// 1) SQLite 연결($pdo) 먼저 생성
+try {
+    $pdo = new PDO('sqlite:' . __DIR__ . '/database.db');
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $pdo->exec('PRAGMA foreign_keys = ON');
+} catch (PDOException $e) {
+    die('DB 연결 실패: ' . $e->getMessage());
+}
+
+// 2) 스키마 생성
+$pdo->exec("CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT,
+    name TEXT,
+    role TEXT DEFAULT 'user'
+)");
+$pdo->exec("CREATE TABLE IF NOT EXISTS trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    type TEXT,
+    amount REAL,
+    profit REAL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+)");
+
+// 3) 초기 계정 보장 함수
+function ensure_user(PDO $pdo, string $username, string $password, string $name, string $role = 'user'): void {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
+    $stmt->execute([$username]);
+    if ((int)$stmt->fetchColumn() === 0) {
+        $hashed = password_hash($password, PASSWORD_DEFAULT);
+        $ins = $pdo->prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)");
+        $ins->execute([$username, $hashed, $name, $role]);
+    }
+}
+
+// 4) 기본 관리자/요청하신 사용자 생성
+ensure_user($pdo, 'admin', 'admin123', '관리자', 'admin');
+ensure_user($pdo, 'jkcorp5005', '1234', '이종도', 'user');
