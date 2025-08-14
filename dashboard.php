@@ -54,7 +54,7 @@ if (!$userName) {
                 <div class="card border-0 shadow h-100 rounded-3">
                     <div class="card-body text-center">
                         <i class="bi bi-wallet2 display-4 text-success mb-3"></i>
-                        <h5 class="card-title">업비트 잔액</h5>
+                        <h5 class="card-title">업비트 평가액(USDT)</h5>
                         <p class="card-text fs-3 fw-bold" id="upbitBalance">로딩 중...</p>
                     </div>
                 </div>
@@ -63,7 +63,7 @@ if (!$userName) {
                 <div class="card border-0 shadow h-100 rounded-3">
                     <div class="card-body text-center">
                         <i class="bi bi-currency-bitcoin display-4 text-primary mb-3"></i>
-                        <h5 class="card-title">바이낸스 잔액</h5>
+                        <h5 class="card-title">바이낸스 평가액(USDT)</h5>
                         <p class="card-text fs-3 fw-bold" id="binanceBalance">로딩 중...</p>
                     </div>
                 </div>

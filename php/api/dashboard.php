@@ -14,15 +14,17 @@ $binanceBalance = 0.0;
 $errors = [];
 
 try {
-    $upbitBalance = fetch_upbit_krw_balance();
+    // 업비트 보유 KRW/USDT/XRP/BIT의 USDT 기준 평가액
+    $upbitBalance = upbit_total_usdt_valuation();
 } catch (Throwable $e) {
-    $errors[] = 'Upbit 조회 실패: ' . $e->getMessage();
+    $errors[] = 'Upbit 평가액 실패: ' . $e->getMessage();
 }
 
 try {
-    $binanceBalance = fetch_binance_usdt_balance();
+    // 바이낸스 보유 USDT/BIT/XRP의 USDT 기준 평가액(스팟+펀딩)
+    $binanceBalance = binance_total_usdt_valuation();
 } catch (Throwable $e) {
-    $errors[] = 'Binance 조회 실패: ' . $e->getMessage();
+    $errors[] = 'Binance 평가액 실패: ' . $e->getMessage();
 }
 
 // 0원 경고 (키 권한/지갑 위치 등 점검 유도)

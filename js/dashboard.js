@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.warn('API errors:', data.errors);
                 alert('알림: ' + data.errors.join(' | '));
             }
-            document.getElementById('upbitBalance').textContent = Number(data.upbitBalance || 0).toLocaleString() + ' KRW';
+            document.getElementById('upbitBalance').textContent = Number(data.upbitBalance || 0).toLocaleString() + ' USDT';
             document.getElementById('binanceBalance').textContent = Number(data.binanceBalance || 0).toLocaleString() + ' USDT';
             document.getElementById('cumulativeProfit').textContent = Number(data.cumulativeProfit || 0).toLocaleString() + ' KRW';
 
