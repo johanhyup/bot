@@ -41,6 +41,7 @@ $result = [
         'ipRestrict' => null,
         'error' => null,
     ],
+    'outboundIp' => null,
 ];
 
 try {
@@ -152,5 +153,15 @@ try {
 } catch (Throwable $e) {
     $result['restrictions']['error'] = $e->getMessage();
 }
+
+// 서버의 아웃바운드 공인 IP 표시
+$outboundIp = null;
+try {
+    $outboundIp = trim(http_get_raw('https://api.ipify.org'));
+} catch (Throwable $e) {
+    $outboundIp = null;
+}
+
+$result['outboundIp'] = $outboundIp;
 
 echo json_encode($result, JSON_UNESCAPED_UNICODE);

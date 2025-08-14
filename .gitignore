@@ -1,0 +1,20 @@
+# OS / IDE
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Secrets
+php/config.php
+php/info.php
+test.pem
+*.pem
+
+# DB
+php/database.db
+*.sqlite
+*.sqlite3
+
+# Dependencies (필요 시)
+vendor/
+node_modules/

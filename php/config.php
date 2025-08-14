@@ -11,4 +11,9 @@ define('UPBIT_SECRET_KEY', $upbitSecret);
 define('BINANCE_API_KEY', $binanceKey);
 define('BINANCE_API_SECRET', $binanceSec);
 
+// 디버그 로깅(임시): 에러로그에 Binance 원본 응답 일부 기록
+if (!defined('DEBUG_EXCHANGE')) {
+    define('DEBUG_EXCHANGE', true);
+}
+
 // 키가 비어있으면 실제 호출 실패합니다. 운영에서는 환경변수 사용 권장.
