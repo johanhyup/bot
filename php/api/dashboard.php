@@ -25,6 +25,11 @@ try {
     $errors[] = 'Binance 조회 실패: ' . $e->getMessage();
 }
 
+// 0원 경고 (키 권한/지갑 위치 등 점검 유도)
+if ($binanceBalance <= 0 && empty($errors)) {
+    $errors[] = 'Binance USDT가 0입니다. 스팟 잔고 0이거나 키 권한/지갑 분리(펀딩)일 수 있습니다. /php/api/debug_binance.php 참고';
+}
+
 // 누적 수익(전체 합)
 $stmt = $pdo->prepare("SELECT COALESCE(SUM(profit), 0) AS total_profit FROM trades WHERE user_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
