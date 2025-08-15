@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -x
 
 REPO_DIR="/var/www/bot/bot"
 SERVICE_SRC="$REPO_DIR/deploy/uvicorn-bot.service"
@@ -15,7 +16,9 @@ pip install -U pip
 pip install -r requirements.txt
 
 # 2) systemd 서비스 설치/기동
+test -f "$SERVICE_SRC" || { echo "service file missing: $SERVICE_SRC" >&2; exit 1; }
 sudo cp -f "$SERVICE_SRC" "$SERVICE_DST"
+sudo chmod 644 "$SERVICE_DST"
 sudo systemctl daemon-reload
 sudo systemctl enable uvicorn-bot
 sudo systemctl restart uvicorn-bot
@@ -23,8 +26,12 @@ sudo systemctl status uvicorn-bot --no-pager || true
 
 # 3) Apache 프록시/SSL 설정
 sudo a2enmod proxy proxy_http headers ssl rewrite
+test -f "$APACHE_SRC" || { echo "apache vhost missing: $APACHE_SRC" >&2; exit 1; }
 sudo cp -f "$APACHE_SRC" "$APACHE_DST"
 sudo a2ensite bot.conf || true
+sudo apachectl -t
 sudo systemctl reload apache2
 
-echo "Done. Check: curl -s https://jkcorp5005.com/api/health"
+echo "Done. Verify:"
+echo " - Local:  curl -i http://127.0.0.1:8000/api/health"
+echo " - Public: curl -i https://jkcorp5005.com/api/health"
