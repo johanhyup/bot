@@ -1,0 +1,16 @@
+[Unit]
+Description=Uvicorn Bot FastAPI
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/bot/bot
+Environment="PYTHONUNBUFFERED=1"
+# python venv 경로 확인
+ExecStart=/var/www/bot/bot/python/venv/bin/uvicorn python.app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

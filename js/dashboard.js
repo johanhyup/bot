@@ -1,10 +1,7 @@
 // js/dashboard.js: Enhanced Dashboard JS with Chart and Error Handling
 document.addEventListener('DOMContentLoaded', function() {
-    fetch('/api/dashboard') // FastAPI 엔드포인트로 변경
-        .then(response => {
-            if (!response.ok) throw new Error('Network error');
-            return response.json();
-        })
+    apiFetch('/api/dashboard') // 공통 유틸 사용(프록시 → 로컬 uvicorn 순 폴백)
+        .then(response => response.json())
         .then(data => {
             if (data.error) {
                 alert(data.error);
@@ -56,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert('데이터 로딩 중 오류가 발생했습니다.');
+            console.error('API Error:', error);
+            alert('데이터 로딩 중 오류가 발생했습니다.\n' + (error && error.message ? error.message : ''));
         });
 });
