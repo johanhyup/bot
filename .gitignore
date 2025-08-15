@@ -18,3 +18,9 @@ php/database.db
 # Dependencies (필요 시)
 vendor/
 node_modules/
+
+# Python
+python/venv/
+python/.env
+__pycache__/
+*.pyc

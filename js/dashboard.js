@@ -1,6 +1,6 @@
 // js/dashboard.js: Enhanced Dashboard JS with Chart and Error Handling
 document.addEventListener('DOMContentLoaded', function() {
-    fetch('php/api/dashboard.php')
+    fetch('/api/dashboard') // FastAPI 엔드포인트로 변경
         .then(response => {
             if (!response.ok) throw new Error('Network error');
             return response.json();
