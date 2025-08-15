@@ -1,12 +1,28 @@
 <?php
 // 1) SQLite 연결($pdo) 먼저 생성
 try {
-    $pdo = new PDO('sqlite:' . __DIR__ . '/database.db', null, null, [
+    $dbDir = __DIR__;
+    $dbFile = $dbDir . '/database.db';
+    // 경로 쓰기 가능 여부 로그
+    if (!is_writable($dbDir)) {
+        error_log("[db.php] directory not writable: {$dbDir}");
+    }
+    if (file_exists($dbFile) && !is_writable($dbFile)) {
+        error_log("[db.php] db file not writable: {$dbFile}");
+    }
+
+    $pdo = new PDO('sqlite:' . $dbFile, null, null, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
-    // 잠금 완화
-    $pdo->exec("PRAGMA journal_mode=WAL;");
+
+    // 잠금 완화: WAL 시도 → 실패 시 DELETE 폴백
+    try {
+        $pdo->exec("PRAGMA journal_mode=WAL;");
+    } catch (Throwable $e) {
+        error_log("[db.php] WAL enable failed, fallback to DELETE: " . $e->getMessage());
+        try { $pdo->exec("PRAGMA journal_mode=DELETE;"); } catch (Throwable $e2) {}
+    }
     $pdo->exec("PRAGMA synchronous=NORMAL;");
     $pdo->exec("PRAGMA busy_timeout=5000;");
     $pdo->exec('PRAGMA foreign_keys = ON');
