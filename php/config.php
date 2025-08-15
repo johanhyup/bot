@@ -17,3 +17,10 @@ if (!defined('DEBUG_EXCHANGE')) {
 }
 
 // 키가 비어있으면 실제 호출 실패합니다. 운영에서는 환경변수 사용 권장.
+
+// 실서버 값으로 변경
+define('DB_HOST', '127.0.0.1');   // 또는 RDS/서버 주소
+define('DB_NAME', 'botdb');
+define('DB_USER', 'botuser');
+define('DB_PASS', 'strong-password');
+define('DB_CHARSET', 'utf8mb4');

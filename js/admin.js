@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadUsers() {
-    fetch('php/api/users.php')
+    fetch('/php/api/users.php') // 절대경로
         .then(response => response.json())
         .then(users => {
             if (users.error) {
@@ -44,7 +44,7 @@ function addUser() {
         return;
     }
 
-    fetch('php/api/add_user.php', {
+    fetch('/php/api/add_user.php', { // 절대경로
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, name, role })
@@ -61,7 +61,7 @@ function addUser() {
 }
 
 function editUser(id) {
-    fetch(`php/api/get_user.php?id=${id}`)
+    fetch(`/php/api/get_user.php?id=${id}`) // 절대경로
         .then(response => response.json())
         .then(user => {
             if (user.error) {
@@ -92,7 +92,7 @@ function updateUser() {
     const body = { id, username, name, role };
     if (password) body.password = password;
 
-    fetch('php/api/update_user.php', {
+    fetch('/php/api/update_user.php', { // 절대경로
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -110,7 +110,7 @@ function updateUser() {
 
 function deleteUser(id) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
-    fetch('php/api/delete_user.php', {
+    fetch('/php/api/delete_user.php', { // 절대경로
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })

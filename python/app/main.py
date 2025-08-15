@@ -9,11 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ccxt
 import asyncio
+import pymysql
+from pymysql.cursors import DictCursor
 
 try:
-    # 선택: .env 지원
     from dotenv import load_dotenv
-    load_dotenv()
+    from pathlib import Path as _P
+    _ENV_PATH = (_P(__file__).resolve().parents[2] / "python" / ".env")
+    load_dotenv(str(_ENV_PATH))
 except Exception:
     pass
 
@@ -26,6 +29,23 @@ BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
 
 from .stream import PriceStore, start_stream_tasks, stop_tasks
+
+# MySQL 접속 정보(.env에서 주입)
+DB_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
+DB_NAME = os.getenv("MYSQL_DB", "botdb")
+DB_USER = os.getenv("MYSQL_USER", "botuser")
+DB_PASS = os.getenv("MYSQL_PASS", "")
+
+def get_db():
+    return pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS,
+        database=DB_NAME,
+        charset="utf8mb4",
+        autocommit=True,
+        cursorclass=DictCursor,
+    )
 
 app = FastAPI(title="Bot API", version="1.0.0")
 
@@ -49,11 +69,6 @@ async def _startup():
 @app.on_event("shutdown")
 async def _shutdown():
     await stop_tasks(app.state.stream_tasks)
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 def sum_balances_portfolio(bal: Dict[str, Any], symbols: List[str]) -> Dict[str, float]:
     out = {s: 0.0 for s in symbols}

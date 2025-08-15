@@ -1,54 +1,42 @@
 <?php
-// 1) SQLite 연결($pdo) 먼저 생성
-try {
-    $dbDir = __DIR__;
-    $dbFile = $dbDir . '/database.db';
-    // 경로 쓰기 가능 여부 로그
-    if (!is_writable($dbDir)) {
-        error_log("[db.php] directory not writable: {$dbDir}");
-    }
-    if (file_exists($dbFile) && !is_writable($dbFile)) {
-        error_log("[db.php] db file not writable: {$dbFile}");
-    }
+require_once __DIR__ . '/config.php';
 
-    $pdo = new PDO('sqlite:' . $dbFile, null, null, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+try {
+    $dsn = sprintf('mysql:host=%s;dbname=%s;charset=%s', DB_HOST, DB_NAME, DB_CHARSET);
+    $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
-
-    // 잠금 완화: WAL 시도 → 실패 시 DELETE 폴백
-    try {
-        $pdo->exec("PRAGMA journal_mode=WAL;");
-    } catch (Throwable $e) {
-        error_log("[db.php] WAL enable failed, fallback to DELETE: " . $e->getMessage());
-        try { $pdo->exec("PRAGMA journal_mode=DELETE;"); } catch (Throwable $e2) {}
-    }
-    $pdo->exec("PRAGMA synchronous=NORMAL;");
-    $pdo->exec("PRAGMA busy_timeout=5000;");
-    $pdo->exec('PRAGMA foreign_keys = ON');
 } catch (PDOException $e) {
     die('DB 연결 실패: ' . $e->getMessage());
 }
 
-// 2) 스키마 생성
-$pdo->exec("CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT,
-    name TEXT,
-    role TEXT DEFAULT 'user'
-)");
-$pdo->exec("CREATE TABLE IF NOT EXISTS trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    type TEXT,
-    amount REAL,
-    profit REAL,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-)");
+// 스키마 생성 (MySQL)
+$pdo->exec("
+CREATE TABLE IF NOT EXISTS users (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    role ENUM('user','admin') NOT NULL DEFAULT 'user',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+");
 
-// 3) 초기 계정 보장 함수
+$pdo->exec("
+CREATE TABLE IF NOT EXISTS trades (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    type VARCHAR(50) NOT NULL,
+    amount DECIMAL(32,8) NOT NULL DEFAULT 0,
+    profit DECIMAL(32,8) NOT NULL DEFAULT 0,
+    CONSTRAINT fk_trades_user FOREIGN KEY (user_id)
+      REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+");
+
+// 초기 계정 보장(필요 시 유지)
 function ensure_user(PDO $pdo, string $username, string $password, string $name, string $role = 'user'): void {
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
     $stmt->execute([$username]);
@@ -58,7 +46,5 @@ function ensure_user(PDO $pdo, string $username, string $password, string $name,
         $ins->execute([$username, $hashed, $name, $role]);
     }
 }
-
-// 4) 기본 관리자/요청하신 사용자 생성
 ensure_user($pdo, 'admin', 'admin123', '관리자', 'admin');
 ensure_user($pdo, 'jkcorp5005', '1234', '이종도', 'user');

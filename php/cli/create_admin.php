@@ -15,10 +15,18 @@ function usage($msg = '') {
     exit(1);
 }
 
+function normalize_cli_arg(?string $s): string {
+    if ($s === null) return '';
+    $s = trim($s);
+    // 인자 전체를 감싼 직/스마트 따옴표 제거
+    $s = preg_replace('/^\s*[\'"‘’“”](.*)[\'"‘’“”]\s*$/u', '$1', $s) ?? $s;
+    return trim($s);
+}
+
 $opts = getopt('', ['username:', 'password:', 'name::']);
-$username = $opts['username'] ?? null;
-$password = $opts['password'] ?? null;
-$name     = $opts['name']     ?? '관리자';
+$username = normalize_cli_arg($opts['username'] ?? null);
+$password = normalize_cli_arg($opts['password'] ?? null);
+$name     = normalize_cli_arg($opts['name']     ?? '관리자');
 
 if (!$username || !$password) {
     usage('username/password 가 필요합니다.');
