@@ -23,7 +23,7 @@ $name     = $opts['name']     ?? '관리자';
 if (!$username || !$password) {
     usage('username/password 가 필요합니다.');
 }
-ㅋ
+
 $hash = password_hash($password, PASSWORD_DEFAULT);
 
 try {
