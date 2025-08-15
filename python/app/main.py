@@ -28,6 +28,8 @@ UPBIT_SECRET_KEY = os.getenv("UPBIT_SECRET_KEY", "")
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
 
+CCXT_TIMEOUT_MS = int(os.getenv("CCXT_TIMEOUT_MS", "10000"))
+
 from .stream import PriceStore, start_stream_tasks, stop_tasks
 
 # MySQL 접속 정보(.env에서 주입)
@@ -106,6 +108,7 @@ def upbit_total_usdt_valuation() -> float:
     up = ccxt.upbit({
         "apiKey": UPBIT_ACCESS_KEY,
         "secret": UPBIT_SECRET_KEY,
+        "timeout": CCXT_TIMEOUT_MS,
     })
     ensure_markets(up)
     bal = up.fetch_balance()  # requires read-permission
@@ -155,6 +158,7 @@ def binance_total_usdt_valuation() -> float:
         "apiKey": BINANCE_API_KEY,
         "secret": BINANCE_API_SECRET,
         "options": {"adjustForTimeDifference": True},
+        "timeout": CCXT_TIMEOUT_MS,
     })
     ensure_markets(bz)
 
@@ -230,8 +234,34 @@ async def tickers():
     return await price_store.snapshot()
 
 @api.get("/health")
-def health():
-    return {"ok": True, "time": datetime.utcnow().isoformat()}
+async def health():
+    # DB 체크
+    db_ok, db_err = True, None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        conn.close()
+    except Exception as e:
+        db_ok, db_err = False, str(e)
+
+    # WS 최신성(최근 120초)
+    fresh = 0
+    try:
+        snap = await price_store.snapshot()
+        now_ms = int(datetime.utcnow().timestamp() * 1000)
+        fresh = sum(1 for v in snap.values() if isinstance(v, dict) and (now_ms - int(v.get("ts", 0))) <= 120_000)
+    except Exception:
+        pass
+
+    return {
+        "ok": db_ok,
+        "time": datetime.utcnow().isoformat(),
+        "db": {"ok": db_ok, "error": db_err},
+        "ws": {"fresh": fresh},
+        "version": "1.0.0",
+    }
 
 class DashboardResponse(BaseModel):
     upbitBalance: float
