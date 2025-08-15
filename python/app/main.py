@@ -2,12 +2,13 @@ import os
 import sqlite3
 from datetime import datetime, date
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ccxt
+import asyncio
 
 try:
     # 선택: .env 지원
@@ -24,6 +25,8 @@ UPBIT_SECRET_KEY = os.getenv("UPBIT_SECRET_KEY", "")
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
 
+from .stream import PriceStore, start_stream_tasks, stop_tasks
+
 app = FastAPI(title="Bot API", version="1.0.0")
 
 # CORS: 프런트가 동일 호스트에서 reverse proxy되면 origins 제한 가능
@@ -34,6 +37,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+price_store = PriceStore()
+app.state.stream_tasks = []
+
+@app.on_event("startup")
+async def _startup():
+    loop = asyncio.get_running_loop()
+    app.state.stream_tasks = start_stream_tasks(loop, price_store)
+
+@app.on_event("shutdown")
+async def _shutdown():
+    await stop_tasks(app.state.stream_tasks)
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -195,6 +210,10 @@ def binance_total_usdt_valuation() -> float:
 
 api = APIRouter(prefix="/api")
 
+@api.get("/tickers")
+async def tickers():
+    return await price_store.snapshot()
+
 @api.get("/health")
 def health():
     return {"ok": True, "time": datetime.utcnow().isoformat()}
@@ -245,6 +264,95 @@ def dashboard():
         "trades": trades,
         "errors": errors,
     }
+
+class AdminTestRequest(BaseModel):
+    userId: int
+    kind: str  # 'api' | 'ws'
+
+class AdminTestResponse(BaseModel):
+    ok: bool
+    userId: int
+    kind: str
+    details: List[str]
+
+@api.post("/admin/test", response_model=AdminTestResponse)
+async def admin_test(req: AdminTestRequest):
+    # 사용자 존재 확인
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT id, username FROM users WHERE id = ?", (req.userId,))
+        row = cur.fetchone()
+        conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
+    if not row:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    details: List[str] = []
+    kind = req.kind.lower().strip()
+    ok = True
+
+    if kind == "api":
+        # 공개 API 빠른 체크
+        try:
+            up = ccxt.upbit()
+            ensure_markets(up)
+            t = up.fetch_ticker("BTC/USDT")
+            if not t or t.get("last") is None:
+                ok = False
+                details.append("Upbit 공개 API 실패")
+            else:
+                details.append("Upbit 공개 API OK")
+        except Exception as e:
+            ok = False
+            details.append(f"Upbit 공개 API 에러: {e}")
+
+        try:
+            bz = ccxt.binance({"options": {"adjustForTimeDifference": True}})
+            ensure_markets(bz)
+            t = bz.fetch_ticker("BTC/USDT")
+            if not t or t.get("last") is None:
+                ok = False
+                details.append("Binance 공개 API 실패")
+            else:
+                details.append("Binance 공개 API OK")
+        except Exception as e:
+            ok = False
+            details.append(f"Binance 공개 API 에러: {e}")
+
+        # 프라이빗(키 존재 시만 시도)
+        if UPBIT_ACCESS_KEY and UPBIT_SECRET_KEY:
+            try:
+                up_priv = ccxt.upbit({"apiKey": UPBIT_ACCESS_KEY, "secret": UPBIT_SECRET_KEY})
+                up_priv.fetch_balance()
+                details.append("Upbit 프라이빗 API OK")
+            except Exception as e:
+                ok = False
+                details.append(f"Upbit 프라이빗 API 에러: {e}")
+        if BINANCE_API_KEY and BINANCE_API_SECRET:
+            try:
+                bz_priv = ccxt.binance({"apiKey": BINANCE_API_KEY, "secret": BINANCE_API_SECRET, "options": {"adjustForTimeDifference": True}})
+                bz_priv.fetch_balance()
+                details.append("Binance 프라이빗 API OK")
+            except Exception as e:
+                ok = False
+                details.append(f"Binance 프라이빗 API 에러: {e}")
+
+    elif kind == "ws":
+        # 스트림 캐시 최신성 체크(최근 120초 내 틱 존재)
+        snap = await price_store.snapshot()
+        now_ms = int(datetime.utcnow().timestamp() * 1000)
+        fresh = [k for k, v in snap.items() if isinstance(v, dict) and (now_ms - int(v.get("ts", 0))) <= 120_000]
+        if fresh:
+            details.append(f"WS OK: 최근 업데이트 {len(fresh)}건")
+        else:
+            ok = False
+            details.append("WS 데이터 없음(스트리머 미기동 또는 네트워크 문제)")
+    else:
+        raise HTTPException(status_code=400, detail="kind 는 'api' 또는 'ws' 이어야 합니다.")
+
+    return {"ok": ok, "userId": int(row["id"]), "kind": kind, "details": details}
 
 # 루트 확인용
 @app.get("/")

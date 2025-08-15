@@ -2,13 +2,18 @@
 require_once __DIR__ . '/php/init.php';
 session_start();
 require_once __DIR__ . '/php/db.php';
-if (!isset($_SESSION['user_id'])) {
-    header('Location: /index.php');
-    exit;
+
+// 세션에 role 없으면 DB에서 가져오기
+if (!isset($_SESSION['role']) && isset($_SESSION['user_id'])) {
+    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $_SESSION['role'] = $stmt->fetchColumn() ?: 'user';
 }
+
+// 관리자 권한 체크
 if (($_SESSION['role'] ?? 'user') !== 'admin') {
     http_response_code(403);
-    echo '접근 권한이 없습니다.';
+    echo '관리자 권한이 필요합니다.';
     exit;
 }
 ?>
@@ -35,6 +40,22 @@ if (($_SESSION['role'] ?? 'user') !== 'admin') {
             </div>
         </div>
     </nav>
+    <div class="container mt-4">
+        <h2 class="mb-3">사용자 관리</h2>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>아이디</th>
+                        <th>이름</th>
+                        <th>권한</th>
+                        <th>액션</th>
+                    </tr>
+                </thead>
+                <tbody id="userList"><!-- JS로 채움 --></tbody>
+            </table>
+        </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/admin.js"></script>
 </body>

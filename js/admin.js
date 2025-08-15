@@ -20,7 +20,9 @@ function loadUsers() {
                     <td>${user.username}</td>
                     <td>${user.name}</td>
                     <td>${user.role === 'admin' ? '<span class="badge bg-primary">관리자</span>' : '<span class="badge bg-secondary">사용자</span>'}</td>
-                    <td>
+                    <td class="text-nowrap">
+                        <button class="btn btn-sm btn-outline-info me-1" onclick="testApi(${user.id})"><i class="bi bi-cloud-check"></i> API 테스트</button>
+                        <button class="btn btn-sm btn-outline-success me-2" onclick="testWs(${user.id})"><i class="bi bi-broadcast-pin"></i> WS 테스트</button>
                         <button class="btn btn-sm btn-warning me-1" onclick="editUser(${user.id})"><i class="bi bi-pencil"></i> 편집</button>
                         <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})"><i class="bi bi-trash"></i> 삭제</button>
                     </td>
@@ -122,3 +124,26 @@ function deleteUser(id) {
         }
     });
 }
+
+async function postAdminTest(userId, kind) {
+    try {
+        const res = await fetch('/api/admin/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ userId, kind })
+        });
+        if (!res.ok) {
+            const msg = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status} ${res.statusText}: ${msg}`);
+        }
+        const data = await res.json();
+        const lines = (data.details || []).join('\n');
+        alert(`${kind.toUpperCase()} 테스트 ${data.ok ? '성공' : '실패'}\n` + lines);
+    } catch (e) {
+        console.error(e);
+        alert(`${kind.toUpperCase()} 테스트 중 오류: ${e.message || e}`);
+    }
+}
+
+function testApi(userId) { postAdminTest(userId, 'api'); }
+function testWs(userId)  { postAdminTest(userId, 'ws'); }
