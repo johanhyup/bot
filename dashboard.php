@@ -36,7 +36,7 @@ if (!$userName) {
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="admin.php"><i class="bi bi-gear"></i> 관리자 페이지</a>
+                        <a class="nav-link" href="/admin/"><i class="bi bi-gear"></i> 관리자 페이지</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="php/logout.php"><i class="bi bi-box-arrow-right"></i> 로그아웃</a>

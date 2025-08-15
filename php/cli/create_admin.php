@@ -1,4 +1,9 @@
 <?php
+if (php_sapi_name() !== 'cli') {
+    http_response_code(403);
+    echo 'CLI only';
+    exit;
+}
 // 사용법 예:
 //  새로 생성: php /var/www/bot/bot/php/cli/create_admin.php --username admin --password "pass1234" --name "관리자"
 //  존재 시 갱신(역할=admin, 비번 변경): 위와 동일 명령으로 실행
@@ -18,7 +23,7 @@ $name     = $opts['name']     ?? '관리자';
 if (!$username || !$password) {
     usage('username/password 가 필요합니다.');
 }
-
+ㅋ
 $hash = password_hash($password, PASSWORD_DEFAULT);
 
 try {

@@ -1,4 +1,9 @@
 <?php
+if (php_sapi_name() !== 'cli') {
+    http_response_code(403);
+    echo 'CLI only';
+    exit;
+}
 // 사용법:
 //  php /var/www/bot/bot/php/cli/promote_admin.php --id 1
 //  php /var/www/bot/bot/php/cli/promote_admin.php --username johndoe
