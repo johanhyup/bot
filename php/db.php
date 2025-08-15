@@ -1,9 +1,14 @@
 <?php
 // 1) SQLite 연결($pdo) 먼저 생성
 try {
-    $pdo = new PDO('sqlite:' . __DIR__ . '/database.db');
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $pdo = new PDO('sqlite:' . __DIR__ . '/database.db', null, null, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]);
+    // 잠금 완화
+    $pdo->exec("PRAGMA journal_mode=WAL;");
+    $pdo->exec("PRAGMA synchronous=NORMAL;");
+    $pdo->exec("PRAGMA busy_timeout=5000;");
     $pdo->exec('PRAGMA foreign_keys = ON');
 } catch (PDOException $e) {
     die('DB 연결 실패: ' . $e->getMessage());
