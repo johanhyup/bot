@@ -6,9 +6,10 @@ After=network.target
 Type=simple
 WorkingDirectory=/var/www/bot/bot
 Environment="PYTHONUNBUFFERED=1"
-# python venv 경로 확인
-ExecStart=/var/www/bot/bot/python/venv/bin/uvicorn python.app.main:app --host 127.0.0.1 --port 8000
+Environment="PYTHONPATH=/var/www/bot/bot"
+ExecStart=/var/www/bot/bot/python/venv/bin/python -m uvicorn python.app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips="*" --log-level info
 Restart=on-failure
+RestartSec=3
 User=www-data
 Group=www-data
 

@@ -1,7 +1,6 @@
 /* api endpoint config + fetch helper */
 window.API_BASES = [
-  '',                                         // same-origin proxy: /api/...
-  `http://${window.location.hostname}:8000`   // direct uvicorn on server host
+  '' // same-origin proxy: /api/...
 ];
 
 async function apiFetch(path, init) {

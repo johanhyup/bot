@@ -4,7 +4,7 @@ from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, Any, List
 
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ccxt
@@ -193,6 +193,12 @@ def binance_total_usdt_valuation() -> float:
         total += amounts["BIT"] * bit_px
     return float(total)
 
+api = APIRouter(prefix="/api")
+
+@api.get("/health")
+def health():
+    return {"ok": True, "time": datetime.utcnow().isoformat()}
+
 class DashboardResponse(BaseModel):
     upbitBalance: float
     binanceBalance: float
@@ -200,11 +206,7 @@ class DashboardResponse(BaseModel):
     trades: List[Dict[str, Any]]
     errors: List[str]
 
-@app.get("/api/health")
-def health():
-    return {"ok": True, "time": datetime.utcnow().isoformat()}
-
-@app.get("/api/dashboard", response_model=DashboardResponse)
+@api.get("/dashboard", response_model=DashboardResponse)
 def dashboard():
     errors: List[str] = []
     upbit_val = 0.0
@@ -243,5 +245,13 @@ def dashboard():
         "trades": trades,
         "errors": errors,
     }
+
+# 루트 확인용
+@app.get("/")
+def root():
+    return {"ok": True, "msg": "Bot FastAPI running", "docs": "/docs", "health": "/api/health"}
+
+# 라우터 등록
+app.include_router(api)
 
 # 개발 실행: uvicorn python.app.main:app --reload --host 0.0.0.0 --port 8000
