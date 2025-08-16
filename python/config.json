@@ -1,0 +1,13 @@
+{
+  "routes": ["BTC-ETH-USDT", "BNB-BTC-USDT", "XRP-BTC-USDT"],
+  "capital_usdt": 1000,
+  "max_alloc_frac": 0.2,
+  "min_edge_bp": 10.0,
+  "maker_fee_bp": 7.5,
+  "use_bnb_discount": true,
+  "depth_levels": 5,
+  "interval_ms": 100,
+  "volatility_stop_pct": 5.0,
+  "simulate": true,
+  "ws_endpoint": "wss://stream.binance.com:9443/stream"
+}

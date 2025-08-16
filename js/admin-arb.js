@@ -14,16 +14,14 @@ async function fetchJSON(url, opt = {}) {
 
 async function loadStatus() {
   try {
-    const s = await fetchJSON('/api/arb/status');
+    const s = await fetchJSON('/api/tri/status');
     document.getElementById('arbStatus').textContent = s.running ? '실행 중' : '중지';
     document.getElementById('arbStatus').className = `badge ${s.running ? 'bg-success' : 'bg-secondary'}`;
-    // 설정 반영
     if (s.config) {
-      document.getElementById('symbols').value = (s.config.symbols || []).join(', ');
-      document.getElementById('minSpreadBp').value = s.config.minSpreadBp ?? 30;
-      document.getElementById('feeUpbit').value = s.config.takerFeeBpUpbit ?? 8;
-      document.getElementById('feeBinance').value = s.config.takerFeeBpBinance ?? 10;
-      document.getElementById('intervalSec').value = s.config.intervalSec ?? 15;
+      document.getElementById('symbols').value = (s.config.routes || []).join(', ');
+      document.getElementById('minSpreadBp').value = s.config.min_edge_bp ?? 10;
+      document.getElementById('feeBinance').value = s.config.maker_fee_bp ?? 7.5;
+      document.getElementById('intervalSec').value = Math.max(1, Math.round((s.config.interval_ms ?? 100) / 1000));
     }
   } catch (e) {
     console.error(e);
@@ -31,23 +29,25 @@ async function loadStatus() {
 }
 
 async function saveConfig() {
+  const routes = document.getElementById('symbols').value.split(',').map(s => s.trim()).filter(Boolean);
   const body = {
-    symbols: document.getElementById('symbols').value.split(',').map(s => s.trim()).filter(Boolean),
-    minSpreadBp: parseFloat(document.getElementById('minSpreadBp').value || '30'),
-    takerFeeBpUpbit: parseFloat(document.getElementById('feeUpbit').value || '8'),
-    takerFeeBpBinance: parseFloat(document.getElementById('feeBinance').value || '10'),
-    intervalSec: parseInt(document.getElementById('intervalSec').value || '15', 10),
+    routes,
+    min_edge_bp: parseFloat(document.getElementById('minSpreadBp').value || '10'),
+    maker_fee_bp: parseFloat(document.getElementById('feeBinance').value || '7.5'),
+    interval_ms: Math.max(50, parseInt(document.getElementById('intervalSec').value || '1', 10) * 1000),
+    // 기본값 유지: capital_usdt/max_alloc_frac/depth_levels/use_bnb_discount/simulate
   };
-  await fetchJSON('/api/arb/config', { method: 'POST', body: JSON.stringify(body) });
+  await fetchJSON('/api/tri/config', { method: 'POST', body: JSON.stringify(body) });
   await loadStatus();
 }
 
 async function startEngine() {
-  await fetchJSON('/api/arb/start', { method: 'POST', body: '{}' });
+  await fetchJSON('/api/tri/start', { method: 'POST', body: '{}' });
   await loadStatus();
 }
+
 async function stopEngine() {
-  await fetchJSON('/api/arb/stop', { method: 'POST', body: '{}' });
+  await fetchJSON('/api/tri/stop', { method: 'POST', body: '{}' });
   await loadStatus();
 }
 

@@ -127,6 +127,13 @@ async def _startup():
 @app.on_event("shutdown")
 async def _shutdown():
     await stop_tasks(app.state.stream_tasks)
+    # (추가) 엔진 종료
+    try:
+        eng = app.state.tri_engine
+        if eng:
+            eng.stop()
+    except Exception:
+        pass
 
 def sum_balances_portfolio(bal: Dict[str, Any], symbols: List[str]) -> Dict[str, float]:
     out = {s: 0.0 for s in symbols}
@@ -485,8 +492,7 @@ ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
 def _require_admin_token(req: Request):
     if not ADMIN_TOKEN:
         return
-    tok = req.headers.get("X-Admin-Token", "")
-    if tok != ADMIN_TOKEN:
+    if req.headers.get("X-Admin-Token", "") != ADMIN_TOKEN:
         raise HTTPException(status_code=403, detail="forbidden")
 
 class ArbConfigIn(BaseModel):
@@ -682,6 +688,97 @@ def arb_signals():
         return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
+
+# (추가) 삼각 아비트리지 엔진 로드
+try:
+    from ..triangular_arbitrage import TriArbEngine, TriConfig
+    TRI_OK = True
+except Exception as _e:
+    TRI_OK = False
+    TriArbEngine = None  # type: ignore
+    TriConfig = None     # type: ignore
+
+app.state.tri_engine = None
+
+@api.get("/tri/status")
+def tri_status():
+    eng = app.state.tri_engine
+    if not TRI_OK:
+        return {"running": False, "error": "engine not available"}
+    running = bool(eng and eng.running)
+    cfg = (eng.cfg.__dict__ if running else None) if eng else None
+    return {"running": running, "config": cfg}
+
+@api.get("/tri/config")
+def tri_get_config():
+    eng = app.state.tri_engine
+    if eng:
+        return eng.cfg.__dict__
+    # 기본 config.json 시도
+    cfg_path = Path(__file__).resolve().parents[1] / "config.json"
+    try:
+        if cfg_path.exists() and TriConfig:
+            return TriConfig.load(cfg_path).__dict__
+    except Exception:
+        pass
+    return {"routes": ["BTC-ETH-USDT"], "capital_usdt": 1000, "max_alloc_frac": 0.2, "min_edge_bp": 10.0, "maker_fee_bp": 7.5, "use_bnb_discount": True, "depth_levels": 5, "interval_ms": 100, "volatility_stop_pct": 5.0, "simulate": True, "ws_endpoint": "wss://stream.binance.com:9443/stream"}
+
+@api.post("/tri/config")
+def tri_set_config(req: Request, body: Dict[str, Any]):
+    _require_admin_token(req)
+    if not TRI_OK:
+        raise HTTPException(500, "engine not available")
+    routes = body.get("routes") or []
+    cfg = TriConfig(
+        routes=routes,
+        capital_usdt=float(body.get("capital_usdt", 1000)),
+        max_alloc_frac=float(body.get("max_alloc_frac", 0.2)),
+        min_edge_bp=float(body.get("min_edge_bp", 10.0)),
+        maker_fee_bp=float(body.get("maker_fee_bp", 7.5)),
+        use_bnb_discount=bool(body.get("use_bnb_discount", True)),
+        depth_levels=int(body.get("depth_levels", 5)),
+        interval_ms=int(body.get("interval_ms", 100)),
+        volatility_stop_pct=float(body.get("volatility_stop_pct", 5.0)),
+        simulate=bool(body.get("simulate", True)),
+        ws_endpoint=str(body.get("ws_endpoint", "wss://stream.binance.com:9443/stream")),
+    )
+    # 실행 중이면 즉시 반영
+    eng = app.state.tri_engine
+    if eng:
+        eng.cfg = cfg
+    # 파일 저장(optional)
+    try:
+        cfg_path = Path(__file__).resolve().parents[1] / "config.json"
+        cfg_path.write_text(json.dumps(cfg.__dict__, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
+    return {"ok": True, "config": cfg.__dict__}
+
+@api.post("/tri/start")
+def tri_start(req: Request):
+    _require_admin_token(req)
+    if not TRI_OK:
+        raise HTTPException(500, "engine not available")
+    api_key = os.getenv("BINANCE_API_KEY", "")
+    api_secret = os.getenv("BINANCE_API_SECRET", "")
+    # cfg 로드(엔진이 없으면 파일/기본)
+    if app.state.tri_engine:
+        eng = app.state.tri_engine
+    else:
+        cfg = tri_get_config()
+        eng = TriArbEngine(TriConfig(**cfg), api_key, api_secret)
+        app.state.tri_engine = eng
+    if not eng.running:
+        eng.start()
+    return {"ok": True, "running": True}
+
+@api.post("/tri/stop")
+def tri_stop(req: Request):
+    _require_admin_token(req)
+    eng = app.state.tri_engine
+    if eng and eng.running:
+        eng.stop()
+    return {"ok": True, "running": False}
 
 # 필요한 모듈
 import json
