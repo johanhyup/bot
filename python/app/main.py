@@ -107,7 +107,7 @@ def get_db():
     )
 
 # (추가) 로깅용
-import sys
+import sys, os  # (추가) 진단
 
 app = FastAPI(title="Bot API", version="1.0.0")
 
@@ -119,6 +119,16 @@ def _ping():
 @app.get("/api/ready2")
 def _ready2():
     return {"ok": True, "time": datetime.utcnow().isoformat(), "via": "app-root"}
+
+# (추가) 자기진단
+@app.get("/whoami")
+def whoami():
+    return {
+        "file": __file__,
+        "cwd": os.getcwd(),
+        "time": datetime.utcnow().isoformat(),
+        "routes": len(app.routes),
+    }
 
 # CORS: 프런트가 동일 호스트에서 reverse proxy되면 origins 제한 가능
 app.add_middleware(
@@ -137,10 +147,17 @@ app.state.tri_engines: _Dict[int, object] = {}
 
 @app.on_event("startup")
 async def _startup():
-    print("[uvicorn] startup: initializing stream tasks...", file=sys.stderr, flush=True)  # (추가) 로그
+    print(f"[uvicorn] startup: app={__file__}", file=sys.stderr, flush=True)  # (추가) 로그
+    print(f"[uvicorn] startup: before include routes={len(app.routes)}", file=sys.stderr, flush=True)
     loop = asyncio.get_running_loop()
     app.state.stream_tasks = start_stream_tasks(loop, price_store)
-    print("[uvicorn] startup: done", file=sys.stderr, flush=True)  # (추가) 로그
+    # 라우트 나열(상위 10개만)
+    try:
+        paths = [getattr(r, "path", "") for r in app.routes][:10]
+        print(f"[uvicorn] startup: after include routes={len(app.routes)} sample={paths}", file=sys.stderr, flush=True)
+    except Exception:
+        pass
+    print("[uvicorn] startup: done", file=sys.stderr, flush=True)
 
 @app.on_event("shutdown")
 async def _shutdown():
@@ -937,3 +954,36 @@ def tri_start(req: Request, body: Dict[str, Any] = Body(default={})):
 
     eng.start()
     return {"ok": True, "running": True, "user_id": user_id}
+
+@api.post("/tri/stop")
+@api.post("/tri/stop/")
+def tri_stop(req: Request, body: Dict[str, Any] = Body(default={})):
+    _require_admin_token(req)
+    if not TRI_OK:
+        raise HTTPException(500, "engine not available")
+    body = body or {}
+    user_id = int(body.get("user_id") or body.get("target_user_id") or 0)
+    if not user_id:
+        raise HTTPException(400, "user_id required")
+    eng = app.state.tri_engines.get(user_id)
+    if eng and getattr(eng, "running", False):
+        try:
+            eng.stop()
+        except Exception:
+            pass
+    return {"ok": True, "running": False, "user_id": user_id}
+
+# (추가) 라우트 덤프
+@api.get("/routes")
+def api_routes():
+    out = []
+    for r in app.routes:
+        try:
+            out.append({
+                "path": getattr(r, "path", None),
+                "name": getattr(r, "name", None),
+                "methods": sorted(list(getattr(r, "methods", []) or [])),
+            })
+        except Exception:
+            continue
+    return out

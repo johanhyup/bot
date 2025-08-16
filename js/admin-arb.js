@@ -30,6 +30,21 @@ async function postWithFallback(paths, bodyObj) {
   throw new Error('HTTP 404 (all fallbacks)');
 }
 
+// (추가) GET/POST 공통 폴백 헬퍼
+async function fetchWithFallback(paths, opt = {}) {
+  let lastErr;
+  for (const p of paths) {
+    try {
+      return await fetchJSON(p, opt);
+    } catch (e) {
+      lastErr = e;
+      if ((e?.message || '').includes('HTTP 404')) continue;
+      throw e;
+    }
+  }
+  throw lastErr || new Error('HTTP 404 (all fallbacks)');
+}
+
 // (추가) ADMIN_TOKEN 확보
 async function ensureAdminToken() {
   if (window.ADMIN_TOKEN) return;
@@ -65,9 +80,15 @@ async function loadUsers() {
   }
 }
 
+// (변경) 상태 로딩에 프록시 폴백 추가
 async function loadStatus() {
   try {
-    const s = await fetchJSON('/api/tri/status');
+    const s = await fetchWithFallback(
+      [
+        '/api/tri/status',
+        '/php/api/tri_proxy.php?path=tri/status'
+      ]
+    );
     document.getElementById('arbStatus').textContent = s.running ? '실행 중' : '중지';
     document.getElementById('arbStatus').className = `badge ${s.running ? 'bg-success' : 'bg-secondary'}`;
     if (s.config) {
@@ -81,13 +102,19 @@ async function loadStatus() {
       }
     }
   } catch (e) {
-    console.error(e);
+    console.error('loadStatus error:', e);
   }
 }
 
+// (변경) 엔진 목록에 프록시 폴백 추가
 async function loadEngines() {
   try {
-    const rows = await fetchJSON('/api/tri/status_all');
+    const rows = await fetchWithFallback(
+      [
+        '/api/tri/status_all',
+        '/php/api/tri_proxy.php?path=tri/status_all'
+      ]
+    );
     const tbody = document.getElementById('enginesBody');
     tbody.innerHTML = '';
     rows.forEach(r => {
@@ -106,12 +133,11 @@ async function loadEngines() {
       tbody.appendChild(tr);
     });
   } catch (e) {
-    // 404 → 구서버 호환 폴백
     console.error('loadEngines error:', e);
   }
 }
 
-// (추가) 설정 저장
+// (변경) 설정 저장: 프록시 폴백 경로 추가
 async function saveConfig() {
   const btn = document.getElementById('btnSave');
   if (btn) btn.disabled = true;
@@ -130,7 +156,15 @@ async function saveConfig() {
       interval_ms: Math.max(50, parseInt(document.getElementById('intervalSec').value || '1', 10) * 1000),
     };
     await postWithFallback(
-      ['/api/tri/config', '/api/tri/config/', '/api/tri/save', '/api/tri/config/set'],
+      [
+        '/api/tri/config',
+        '/api/tri/config/',
+        '/api/tri/save',
+        '/api/tri/config/set',
+        '/php/api/tri_proxy.php?path=tri/config',
+        '/php/api/tri_proxy.php?path=tri/save',
+        '/php/api/tri_proxy.php?path=tri/config/set'
+      ],
       body
     );
     await loadEngines();
@@ -143,14 +177,21 @@ async function saveConfig() {
   }
 }
 
-// (추가) 엔진 시작/중지
+// (변경) 엔진 시작/중지: 프록시 폴백 경로 추가
 async function startEngine() {
   const uid = parseInt(document.getElementById('targetUser').value || '0', 10);
   if (!uid) { alert('대상 사용자를 선택하세요.'); return; }
   const btn = document.getElementById('btnStart');
   if (btn) btn.disabled = true;
   try {
-    await postWithFallback(['/api/tri/start', '/api/tri/start/'], { user_id: uid });
+    await postWithFallback(
+      [
+        '/api/tri/start',
+        '/api/tri/start/',
+        '/php/api/tri_proxy.php?path=tri/start'
+      ],
+      { user_id: uid }
+    );
     await loadEngines();
     alert('엔진이 시작되었습니다.');
   } catch (e) {
@@ -167,7 +208,14 @@ async function stopEngine() {
   const btn = document.getElementById('btnStop');
   if (btn) btn.disabled = true;
   try {
-    await postWithFallback(['/api/tri/stop', '/api/tri/stop/'], { user_id: uid });
+    await postWithFallback(
+      [
+        '/api/tri/stop',
+        '/api/tri/stop/',
+        '/php/api/tri_proxy.php?path=tri/stop'
+      ],
+      { user_id: uid }
+    );
     await loadEngines();
     alert('엔진이 중지되었습니다.');
   } catch (e) {
@@ -183,7 +231,14 @@ async function startEngineFor(btn) {
   const uid = parseInt(btn.getAttribute('data-user') || '0', 10);
   if (!uid) return;
   try {
-    await postWithFallback(['/api/tri/start', '/api/tri/start/'], { user_id: uid });
+    await postWithFallback(
+      [
+        '/api/tri/start',
+        '/api/tri/start/',
+        '/php/api/tri_proxy.php?path=tri/start'
+      ],
+      { user_id: uid }
+    );
     await loadEngines();
   } catch (e) { alert(`시작 실패: ${e.message || e}`); }
 }
@@ -192,15 +247,27 @@ async function stopEngineFor(btn) {
   const uid = parseInt(btn.getAttribute('data-user') || '0', 10);
   if (!uid) return;
   try {
-    await postWithFallback(['/api/tri/stop', '/api/tri/stop/'], { user_id: uid });
+    await postWithFallback(
+      [
+        '/api/tri/stop',
+        '/api/tri/stop/',
+        '/php/api/tri_proxy.php?path=tri/stop'
+      ],
+      { user_id: uid }
+    );
     await loadEngines();
   } catch (e) { alert(`중지 실패: ${e.message || e}`); }
 }
 
-// (추가) 시그널 로딩
+// (변경) 시그널: 프록시 폴백 추가
 async function loadSignals() {
   try {
-    const rows = await fetchJSON('/api/arb/signals');
+    const rows = await fetchWithFallback(
+      [
+        '/api/arb/signals',
+        '/php/api/tri_proxy.php?path=arb/signals'
+      ]
+    );
     const tbody = document.getElementById('signalsBody');
     if (!tbody) return;
     tbody.innerHTML = '';
