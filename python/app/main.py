@@ -9,8 +9,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ccxt
 import asyncio
-import pymysql
-from pymysql.cursors import DictCursor
+# (변경) PyMySQL 임포트 가드
+try:
+    import pymysql
+    from pymysql.cursors import DictCursor
+    PYMYSQL_OK = True
+except Exception:
+    PYMYSQL_OK = False
+    pymysql = None
+    DictCursor = None
+import concurrent.futures
 
 try:
     from dotenv import load_dotenv
@@ -29,6 +37,7 @@ BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
 
 CCXT_TIMEOUT_MS = int(os.getenv("CCXT_TIMEOUT_MS", "10000"))
+DASHBOARD_TIMEOUT_MS = int(os.getenv("DASHBOARD_TIMEOUT_MS", "5000"))
 
 from .stream import PriceStore, start_stream_tasks, stop_tasks
 
@@ -39,6 +48,8 @@ DB_USER = os.getenv("MYSQL_USER", "botuser")
 DB_PASS = os.getenv("MYSQL_PASS", "")
 
 def get_db():
+    if not PYMYSQL_OK:
+        raise RuntimeError("PyMySQL not installed")
     return pymysql.connect(
         host=DB_HOST,
         user=DB_USER,
@@ -229,6 +240,11 @@ def binance_total_usdt_valuation() -> float:
 
 api = APIRouter(prefix="/api")
 
+# (추가) 레디니스 체크: 서버 기동 여부만 확인
+@api.get("/ready")
+def ready():
+    return {"ok": True, "time": datetime.utcnow().isoformat()}
+
 @api.get("/tickers")
 async def tickers():
     return await price_store.snapshot()
@@ -276,26 +292,35 @@ def dashboard():
     upbit_val = 0.0
     binance_val = 0.0
 
+    # 외부 거래소 평가는 병렬 + 타임아웃 처리
     try:
-        upbit_val = upbit_total_usdt_valuation()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            fu_up = ex.submit(upbit_total_usdt_valuation)
+            fu_bz = ex.submit(binance_total_usdt_valuation)
+            try:
+                upbit_val = float(fu_up.result(timeout=DASHBOARD_TIMEOUT_MS / 1000))
+            except Exception as e:
+                errors.append(f"Upbit 평가액 실패/타임아웃: {e}")
+            try:
+                binance_val = float(fu_bz.result(timeout=DASHBOARD_TIMEOUT_MS / 1000))
+            except Exception as e:
+                errors.append(f"Binance 평가액 실패/타임아웃: {e}")
     except Exception as e:
-        errors.append(f"Upbit 평가액 실패: {e}")
+        errors.append(f"평가액 처리 실패: {e}")
 
-    try:
-        binance_val = binance_total_usdt_valuation()
-    except Exception as e:
-        errors.append(f"Binance 평가액 실패: {e}")
-
-    # DB에서 누적 수익/금일 거래(전체 합산; 필요 시 user_id 파라미터로 제한 가능)
+    # DB에서 누적 수익/금일 거래
     cum = 0.0
     trades: List[Dict[str, Any]] = []
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT COALESCE(SUM(profit),0) FROM trades")
-        cum = float(cur.fetchone()[0] or 0)
+        cur.execute("SELECT COALESCE(SUM(profit),0) AS s FROM trades")
+        row = cur.fetchone()
+        cum = float((row.get("s") if isinstance(row, dict) else row[0]) or 0)
+
         today_start = date.today().strftime("%Y-%m-%d") + " 00:00:00"
-        cur.execute("SELECT time, type, amount, profit FROM trades WHERE time >= ? ORDER BY time DESC", (today_start,))
+        # PyMySQL는 %s 플레이스홀더 사용
+        cur.execute("SELECT time, type, amount, profit FROM trades WHERE time >= %s ORDER BY time DESC", (today_start,))
         rows = cur.fetchall()
         trades = [{"time": r["time"], "type": r["type"], "amount": r["amount"], "profit": r["profit"]} for r in rows]
         conn.close()
@@ -326,7 +351,8 @@ async def admin_test(req: AdminTestRequest):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id, username FROM users WHERE id = ?", (req.userId,))
+        # PyMySQL는 %s 플레이스홀더 사용
+        cur.execute("SELECT id, username FROM users WHERE id = %s", (req.userId,))
         row = cur.fetchone()
         conn.close()
     except Exception as e:
