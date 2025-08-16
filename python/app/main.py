@@ -155,8 +155,13 @@ async def _startup():
     app.state.stream_tasks = start_stream_tasks(loop, price_store)
     # 라우트 나열(상위 10개만)
     try:
-        paths = [getattr(r, "path", "") for r in app.routes][:10]
-        print(f"[uvicorn] startup: after include routes={len(app.routes)} sample={paths}", file=sys.stderr, flush=True)
+        paths = [getattr(r, "path", "") for r in app.routes]
+        print(f"[uvicorn] startup: after include routes={len(app.routes)}", file=sys.stderr, flush=True)
+        # (추가) 필수 라우트 점검
+        must = {"/api/tri/status", "/api/tri/status_all", "/api/arb/signals"}
+        missing = sorted(list(must - set(paths)))
+        if missing:
+            print(f"[warn] missing routes: {missing}. app.include_router(api) 위치를 파일 맨 아래로 이동했는지 확인.", file=sys.stderr, flush=True)
     except Exception:
         pass
     print("[uvicorn] startup: done", file=sys.stderr, flush=True)
@@ -164,7 +169,13 @@ async def _startup():
 @app.on_event("shutdown")
 async def _shutdown():
     print("[uvicorn] shutdown: stopping tasks...", file=sys.stderr, flush=True)  # (추가) 로그
-    await stop_tasks(app.state.stream_tasks)
+    try:
+        await stop_tasks(app.state.stream_tasks)
+    except asyncio.CancelledError:
+        # (추가) 종료 중 취소 예외 무시
+        pass
+    except Exception as e:
+        print(f"[shutdown] stop_tasks error: {e}", file=sys.stderr, flush=True)
     # (추가) 모든 tri 엔진 중지
     try:
         for uid, eng in list(app.state.tri_engines.items()):
@@ -523,8 +534,6 @@ async def admin_test(req: AdminTestRequest):
 @app.get("/")
 def root():
     return {"ok": True, "msg": "Bot FastAPI running", "docs": "/docs", "health": "/api/health"}
-
-# ...existing code...
 
 @api.post("/tri/stop")
 @api.post("/tri/stop/")
