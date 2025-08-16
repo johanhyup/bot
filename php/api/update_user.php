@@ -1,51 +1,50 @@
 <?php
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store, no-cache, must-revalidate');
-header('Pragma: no-cache');
+declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/../db.php';
 
-$meId = (int)($_SESSION['user_id'] ?? 0);
-$meRole = $_SESSION['role'] ?? 'user';
+header('Content-Type: application/json; charset=utf-8');
 
-$input = json_decode(file_get_contents('php://input'), true) ?? [];
-$id = (int)($input['id'] ?? 0);
-$username = trim($input['username'] ?? '');
-$name = trim($input['name'] ?? '');
-$role = $input['role'] ?? null;
-$password = $input['password'] ?? null;
-
-if (!$id || !$username || !$name) {
-    echo json_encode(['success' => false, 'message' => 'missing fields']);
-    exit;
-}
-
-if ($meRole !== 'admin' && $id !== $meId) {
+if (!isset($_SESSION['user_id']) || (($_SESSION['role'] ?? 'user') !== 'admin')) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'forbidden']);
     exit;
 }
 
+$input = json_decode(file_get_contents('php://input'), true) ?: [];
+$id       = (int)($input['id'] ?? 0);
+$username = trim($input['username'] ?? '');
+$name     = trim($input['name'] ?? '');
+$role     = ($input['role'] ?? 'user') === 'admin' ? 'admin' : 'user';
+$password = $input['password'] ?? null;
+
+if ($id <= 0 || $username === '' || $name === '') {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => '입력 오류']);
+    exit;
+}
+
 try {
-    $fields = ['username' => $username, 'name' => $name];
-    $set = "username = :username, name = :name";
+    // username 중복(본인 제외)
+    $st = $pdo->prepare('SELECT COUNT(*) FROM users WHERE username = ? AND id <> ?');
+    $st->execute([$username, $id]);
+    if ((int)$st->fetchColumn() > 0) {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'message' => '이미 존재하는 아이디']);
+        exit;
+    }
 
     if ($password !== null && $password !== '') {
-        $fields['password'] = password_hash($password, PASSWORD_DEFAULT);
-        $set .= ", password = :password";
-    }
-    if ($meRole === 'admin' && in_array($role, ['user','admin'], true)) {
-        $fields['role'] = $role;
-        $set .= ", role = :role";
+        $hash = password_hash((string)$password, PASSWORD_DEFAULT);
+        $st = $pdo->prepare('UPDATE users SET username = ?, password = ?, name = ?, role = ? WHERE id = ?');
+        $st->execute([$username, $hash, $name, $role, $id]);
+    } else {
+        $st = $pdo->prepare('UPDATE users SET username = ?, name = ?, role = ? WHERE id = ?');
+        $st->execute([$username, $name, $role, $id]);
     }
 
-    $fields['id'] = $id;
-    $sql = "UPDATE users SET $set WHERE id = :id";
-    $stmt = $pdo->prepare($sql);
-    $ok = $stmt->execute($fields);
-
-    echo json_encode(['success' => (bool)$ok]);
+    echo json_encode(['success' => true]);
 } catch (Throwable $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'DB 오류: ' . $e->getMessage()]);
 }

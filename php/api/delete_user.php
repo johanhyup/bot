@@ -1,34 +1,34 @@
 <?php
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store, no-cache, must-revalidate');
-header('Pragma: no-cache');
+declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/../db.php';
 
-$meId = (int)($_SESSION['user_id'] ?? 0);
-$meRole = $_SESSION['role'] ?? 'user';
+header('Content-Type: application/json; charset=utf-8');
 
-if ($meRole !== 'admin') {
+if (!isset($_SESSION['user_id']) || (($_SESSION['role'] ?? 'user') !== 'admin')) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'forbidden']);
     exit;
 }
 
-$input = json_decode(file_get_contents('php://input'), true) ?? [];
+$input = json_decode(file_get_contents('php://input'), true) ?: [];
 $id = (int)($input['id'] ?? 0);
-if (!$id) { echo json_encode(['success' => false, 'message' => 'invalid id']); exit; }
-
-// 자기 자신 삭제 방지(원치 않으면 제거)
-if ($id === $meId) {
-    echo json_encode(['success' => false, 'message' => 'cannot delete yourself']);
+if ($id <= 0) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'invalid_id']);
+    exit;
+}
+if ($id === (int)($_SESSION['user_id'] ?? 0)) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => '본인 계정은 삭제할 수 없습니다.']);
     exit;
 }
 
 try {
-    $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
-    $ok = $stmt->execute([$id]);
-    echo json_encode(['success' => (bool)$ok]);
+    $st = $pdo->prepare('DELETE FROM users WHERE id = ?');
+    $st->execute([$id]);
+    echo json_encode(['success' => true]);
 } catch (Throwable $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'DB 오류: ' . $e->getMessage()]);
 }

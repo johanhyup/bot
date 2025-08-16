@@ -12,7 +12,7 @@ if (!isset($_SESSION['user_id']) || (($_SESSION['role'] ?? 'user') !== 'admin'))
 }
 
 try {
-    $stmt = $pdo->query("SELECT id, username, name FROM users ORDER BY id ASC");
+    $stmt = $pdo->query("SELECT id, username, name, role FROM users ORDER BY id ASC");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($rows, JSON_UNESCAPED_UNICODE);

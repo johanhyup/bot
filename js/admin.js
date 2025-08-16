@@ -6,8 +6,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadUsers() {
-    fetch('/php/api/users.php') // 절대경로
-        .then(response => response.json())
+    fetch('/php/api/users.php', { credentials: 'same-origin' })
+        .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
         .then(users => {
             if (users.error) {
                 alert(users.error);
@@ -27,10 +27,13 @@ function loadUsers() {
                         <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})"><i class="bi bi-trash"></i> 삭제</button>
                     </td>
                 </tr>`;
-                userList.innerHTML += row;
+                userList.insertAdjacentHTML('beforeend', row);
             });
         })
-        .catch(error => console.error('Error:', error));
+        .catch(error => {
+            console.error('Error:', error);
+            alert('사용자 목록을 불러오지 못했습니다.');
+        });
 }
 
 function addUser() {
@@ -44,12 +47,13 @@ function addUser() {
         return;
     }
 
-    fetch('/php/api/add_user.php', { // 절대경로
+    fetch('/php/api/add_user.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ username, password, name, role })
     })
-    .then(response => response.json())
+    .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
     .then(data => {
         if (data.success) {
             loadUsers();
@@ -57,12 +61,13 @@ function addUser() {
         } else {
             alert('추가 실패: ' + data.message);
         }
-    });
+    })
+    .catch(e => alert('추가 실패: ' + (e.message || e)));
 }
 
 function editUser(id) {
-    fetch(`/php/api/get_user.php?id=${id}`) // 절대경로
-        .then(response => response.json())
+    fetch(`/php/api/get_user.php?id=${id}`, { credentials: 'same-origin' })
+        .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
         .then(user => {
             if (user.error) {
                 alert(user.error);
@@ -74,7 +79,8 @@ function editUser(id) {
             document.getElementById('editRole').value = user.role;
             document.getElementById('editPassword').value = '';
             new bootstrap.Modal(document.getElementById('editUserModal')).show();
-        });
+        })
+        .catch(e => alert('조회 실패: ' + (e.message || e)));
 }
 
 function updateUser() {
@@ -92,12 +98,13 @@ function updateUser() {
     const body = { id, username, name, role };
     if (password) body.password = password;
 
-    fetch('/php/api/update_user.php', { // 절대경로
+    fetch('/php/api/update_user.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify(body)
     })
-    .then(response => response.json())
+    .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
     .then(data => {
         if (data.success) {
             loadUsers();
@@ -105,24 +112,27 @@ function updateUser() {
         } else {
             alert('업데이트 실패: ' + data.message);
         }
-    });
+    })
+    .catch(e => alert('업데이트 실패: ' + (e.message || e)));
 }
 
 function deleteUser(id) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
-    fetch('/php/api/delete_user.php', { // 절대경로
+    fetch('/php/api/delete_user.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ id })
     })
-    .then(response => response.json())
+    .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
     .then(data => {
         if (data.success) {
             loadUsers();
         } else {
             alert('삭제 실패: ' + data.message);
         }
-    });
+    })
+    .catch(e => alert('삭제 실패: ' + (e.message || e)));
 }
 
 async function postAdminTest(userId, kind) {
@@ -130,6 +140,7 @@ async function postAdminTest(userId, kind) {
         const res = await fetch('/api/admin/test', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin',
             body: JSON.stringify({ userId, kind })
         });
         if (!res.ok) {
