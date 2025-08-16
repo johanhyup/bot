@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# 실행: bash /Users/joko/bot/scripts/run_uvicorn.sh
-ROOT="/Users/joko/bot"
+# 실행: bash /var/www/bot/bot/scripts/run_uvicorn.sh
+ROOT="/var/www/bot/bot"
 cd "$ROOT"
 
 export PYTHONUNBUFFERED=1
