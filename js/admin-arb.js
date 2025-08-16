@@ -107,6 +107,110 @@ async function loadEngines() {
     });
   } catch (e) {
     // 404 → 구서버 호환 폴백
+    console.error('loadEngines error:', e);
+  }
+}
+
+// (추가) 설정 저장
+async function saveConfig() {
+  const btn = document.getElementById('btnSave');
+  if (btn) btn.disabled = true;
+  try {
+    const routes = document.getElementById('symbols').value.split(',').map(s => s.trim()).filter(Boolean);
+    const target_user_id = parseInt(document.getElementById('targetUser').value || '0', 10);
+    if (!target_user_id) {
+      alert('대상 사용자를 선택하세요.');
+      return;
+    }
+    const body = {
+      routes,
+      target_user_id,
+      min_edge_bp: parseFloat(document.getElementById('minSpreadBp').value || '10'),
+      maker_fee_bp: parseFloat(document.getElementById('feeBinance').value || '7.5'),
+      interval_ms: Math.max(50, parseInt(document.getElementById('intervalSec').value || '1', 10) * 1000),
+    };
+    await postWithFallback(
+      ['/api/tri/config', '/api/tri/config/', '/api/tri/save', '/api/tri/config/set'],
+      body
+    );
+    await loadEngines();
+    alert('설정이 저장되었습니다.');
+  } catch (e) {
+    console.error(e);
+    alert(`설정 저장 실패: ${e.message || e}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// (추가) 엔진 시작/중지
+async function startEngine() {
+  const uid = parseInt(document.getElementById('targetUser').value || '0', 10);
+  if (!uid) { alert('대상 사용자를 선택하세요.'); return; }
+  const btn = document.getElementById('btnStart');
+  if (btn) btn.disabled = true;
+  try {
+    await postWithFallback(['/api/tri/start', '/api/tri/start/'], { user_id: uid });
+    await loadEngines();
+    alert('엔진이 시작되었습니다.');
+  } catch (e) {
+    console.error(e);
+    alert(`시작 실패: ${e.message || e}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function stopEngine() {
+  const uid = parseInt(document.getElementById('targetUser').value || '0', 10);
+  if (!uid) { alert('대상 사용자를 선택하세요.'); return; }
+  const btn = document.getElementById('btnStop');
+  if (btn) btn.disabled = true;
+  try {
+    await postWithFallback(['/api/tri/stop', '/api/tri/stop/'], { user_id: uid });
+    await loadEngines();
+    alert('엔진이 중지되었습니다.');
+  } catch (e) {
+    console.error(e);
+    alert(`중지 실패: ${e.message || e}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// (추가) 테이블 액션용
+async function startEngineFor(btn) {
+  const uid = parseInt(btn.getAttribute('data-user') || '0', 10);
+  if (!uid) return;
+  try {
+    await postWithFallback(['/api/tri/start', '/api/tri/start/'], { user_id: uid });
+    await loadEngines();
+  } catch (e) { alert(`시작 실패: ${e.message || e}`); }
+}
+
+async function stopEngineFor(btn) {
+  const uid = parseInt(btn.getAttribute('data-user') || '0', 10);
+  if (!uid) return;
+  try {
+    await postWithFallback(['/api/tri/stop', '/api/tri/stop/'], { user_id: uid });
+    await loadEngines();
+  } catch (e) { alert(`중지 실패: ${e.message || e}`); }
+}
+
+// (추가) 시그널 로딩
+async function loadSignals() {
+  try {
+    const rows = await fetchJSON('/api/arb/signals');
+    const tbody = document.getElementById('signalsBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.time}</td><td>${r.symbol}</td><td>${r.side}</td><td>${Number(r.spread_bp).toFixed(2)}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error('loadSignals error:', e);
   }
 }
 
@@ -118,6 +222,15 @@ document.addEventListener('DOMContentLoaded', () => {
       loadSignals();
     });
   });
-  const btnRU = document.getElementById('btnReloadUsers');
-  if (btnRU) btnRU.addEventListener('click', loadUsers);
+
+  // (추가) 버튼 이벤트 바인딩
+  document.getElementById('btnSave')?.addEventListener('click', saveConfig);
+  document.getElementById('btnStart')?.addEventListener('click', startEngine);
+  document.getElementById('btnStop')?.addEventListener('click', stopEngine);
+  document.getElementById('btnRefresh')?.addEventListener('click', loadSignals);
+  document.getElementById('btnReloadEngines')?.addEventListener('click', loadEngines);
+  document.getElementById('btnReloadUsers')?.addEventListener('click', loadUsers);
+
+  // (추가) 주기적 갱신
+  setInterval(loadEngines, 8000);
 });
