@@ -40,5 +40,5 @@ else
 fi
 
 echo "[OK] user '${DB_USER}' ready on database '${DB_NAME}'"
-echo "- php/config.php: DB_HOST=127.0.0.1, DB_NAME=${DB_NAME}, DB_USER=${DB_USER}, DB_PASS=<같은 비번>"
-echo "- python/.env   : MYSQL_HOST=127.0.0.1, MYSQL_DB=${DB_NAME}, MYSQL_USER=${DB_USER}, MYSQL_PASS=<같은 비번>"
+echo "- php/config.php: DB_HOST=127.0.0.1, DB_NAME=${DB_NAME}, DB_USER=${DB_USER}, DB_PASS=12341234!@#$asdf"
+echo "- python/.env   : MYSQL_HOST=127.0.0.1, MYSQL_DB=${DB_NAME}, MYSQL_USER=${DB_USER}, MYSQL_PASS=12341234!@#$asdf"
