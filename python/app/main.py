@@ -497,9 +497,15 @@ app.include_router(api)
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
 
 def _require_admin_token(req: Request):
+    # (변경) 헤더/쿠키/쿼리 토큰 모두 허용
     if not ADMIN_TOKEN:
         return
-    if req.headers.get("X-Admin-Token", "") != ADMIN_TOKEN:
+    got = (
+        req.headers.get("X-Admin-Token")
+        or req.cookies.get("ADMIN_TOKEN")
+        or req.query_params.get("token")
+    )
+    if got != ADMIN_TOKEN:
         raise HTTPException(status_code=403, detail="forbidden")
 
 class ArbConfigIn(BaseModel):
@@ -823,6 +829,12 @@ def tri_status_all():
         })
     return out
 
+# (추가) 호환 alias 경로
+@api.get("/tri/status-all")
+@api.get("/tri/statusAll")
+def tri_status_all_alias():
+    return tri_status_all()
+
 @api.get("/tri/config")
 def tri_get_config(user_id: Optional[int] = None):
     if not TRI_OK:
@@ -844,7 +856,7 @@ def tri_get_config(user_id: Optional[int] = None):
     return {"routes": ["BTC-ETH-USDT"], "capital_usdt": 1000, "max_alloc_frac": 0.2, "min_edge_bp": 10.0, "maker_fee_bp": 7.5, "use_bnb_discount": True, "depth_levels": 5, "interval_ms": 100, "volatility_stop_pct": 5.0, "simulate": True, "ws_endpoint": "wss://stream.binance.com:9443/stream"}
 
 @api.post("/tri/config")
-def tri_set_config(req: Request, body: Dict[str, Any]):
+def tri_set_config(req: Request, body: Dict[str, Any] = Body(...)):
     _require_admin_token(req)
     if not TRI_OK:
         raise HTTPException(500, "engine not available")
@@ -874,7 +886,7 @@ def tri_set_config(req: Request, body: Dict[str, Any]):
     return {"ok": True, "config": cfg.__dict__}
 
 @api.post("/tri/start")
-def tri_start(req: Request, body: Dict[str, Any] = None):
+def tri_start(req: Request, body: Dict[str, Any] = Body(default={})):
     _require_admin_token(req)
     if not TRI_OK:
         raise HTTPException(500, "engine not available")
@@ -906,7 +918,7 @@ def tri_start(req: Request, body: Dict[str, Any] = None):
     return {"ok": True, "running": True, "user_id": user_id}
 
 @api.post("/tri/stop")
-def tri_stop(req: Request, body: Dict[str, Any] = None):
+def tri_stop(req: Request, body: Dict[str, Any] = Body(default={})):
     _require_admin_token(req)
     body = body or {}
     user_id = int(body.get("user_id") or body.get("target_user_id") or 0)
