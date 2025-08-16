@@ -2,7 +2,8 @@ import os
 import sqlite3
 from datetime import datetime, date
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict as _Dict
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -118,6 +119,9 @@ app.add_middleware(
 
 price_store = PriceStore()
 app.state.stream_tasks = []
+app.state.tri_engine = None
+# (추가) 다중 사용자 엔진 맵
+app.state.tri_engines: _Dict[int, object] = {}
 
 @app.on_event("startup")
 async def _startup():
@@ -127,11 +131,14 @@ async def _startup():
 @app.on_event("shutdown")
 async def _shutdown():
     await stop_tasks(app.state.stream_tasks)
-    # (추가) 엔진 종료
+    # (추가) 모든 tri 엔진 중지
     try:
-        eng = app.state.tri_engine
-        if eng:
-            eng.stop()
+        for uid, eng in list(app.state.tri_engines.items()):
+            try:
+                if eng and getattr(eng, "running", False):
+                    eng.stop()
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -698,23 +705,136 @@ except Exception as _e:
     TriArbEngine = None  # type: ignore
     TriConfig = None     # type: ignore
 
-app.state.tri_engine = None
+# (추가) per-user 설정 저장/로드
+def _tri_cfg_table_ensure():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS tri_configs (
+            user_id INT PRIMARY KEY,
+            json TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;""")
+        conn.close()
+    except Exception:
+        pass
+
+def save_user_tri_config(user_id: int, cfg_dict: Dict[str, Any]):
+    _tri_cfg_table_ensure()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("REPLACE INTO tri_configs (user_id, json) VALUES (%s, %s)", (int(user_id), json.dumps(cfg_dict, ensure_ascii=False)))
+        conn.close()
+    except Exception as e:
+        print("[tri] save cfg error:", e)
+
+def load_user_tri_config(user_id: int) -> Dict[str, Any] | None:
+    _tri_cfg_table_ensure()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT json FROM tri_configs WHERE user_id = %s", (int(user_id),))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return None
+        j = row["json"] if isinstance(row, dict) else row[0]
+        return json.loads(j)
+    except Exception as e:
+        print("[tri] load cfg error:", e)
+        return None
+
+def list_configured_users() -> List[int]:
+    _tri_cfg_table_ensure()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT user_id FROM tri_configs ORDER BY user_id ASC")
+        rows = cur.fetchall()
+        conn.close()
+        out = []
+        for r in rows:
+            out.append(int(r["user_id"] if isinstance(r, dict) else r[0]))
+        return out
+    except Exception:
+        return []
+
+def _get_user_api_keys(exchange: str, user_id: int) -> Tuple[str, str] | Tuple[None, None]:
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT api_key, api_secret FROM user_api_keys WHERE user_id = %s AND exchange = %s AND is_active = 1 ORDER BY id DESC LIMIT 1",
+            (int(user_id), exchange)
+        )
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return (None, None)
+        # DictCursor or tuple both 지원
+        k = row.get("api_key") if isinstance(row, dict) else row[0]
+        s = row.get("api_secret") if isinstance(row, dict) else row[1]
+        return (k, s)
+    except Exception as e:
+        print("[tri] fetch user api keys error:", e)
+        return (None, None)
 
 @api.get("/tri/status")
 def tri_status():
-    eng = app.state.tri_engine
+    # 기존 단일 상태는 호환 목적으로 유지(첫 엔진 또는 None)
+    eng = next(iter(app.state.tri_engines.values()), None)
     if not TRI_OK:
         return {"running": False, "error": "engine not available"}
     running = bool(eng and eng.running)
     cfg = (eng.cfg.__dict__ if running else None) if eng else None
     return {"running": running, "config": cfg}
 
+@api.get("/tri/status_all")
+def tri_status_all():
+    if not TRI_OK:
+        return []
+    out = []
+    # 설정된 사용자 + 실행중 사용자 모두 포함
+    user_ids = set(list_configured_users()) | set(app.state.tri_engines.keys())
+    # 사용자 프로필 이름/아이디 보조
+    users = {}
+    try:
+        conn = get_db(); cur = conn.cursor()
+        if user_ids:
+            cur.execute(f"SELECT id, username, name FROM users WHERE id IN ({','.join(['%s']*len(user_ids))})", tuple(user_ids))
+            for r in cur.fetchall():
+                users[int(r['id']) if isinstance(r, dict) else int(r[0])] = {
+                    "username": (r['username'] if isinstance(r, dict) else r[1]),
+                    "name": (r['name'] if isinstance(r, dict) else r[2]),
+                }
+        conn.close()
+    except Exception:
+        pass
+    for uid in sorted(user_ids):
+        eng = app.state.tri_engines.get(uid)
+        cfg = getattr(eng, "cfg", None)
+        out.append({
+            "user_id": uid,
+            "username": users.get(uid, {}).get("username"),
+            "name": users.get(uid, {}).get("name"),
+            "running": bool(eng and getattr(eng, "running", False)),
+            "config": (cfg.__dict__ if cfg else load_user_tri_config(uid)),
+        })
+    return out
+
 @api.get("/tri/config")
-def tri_get_config():
-    eng = app.state.tri_engine
-    if eng:
-        return eng.cfg.__dict__
-    # 기본 config.json 시도
+def tri_get_config(user_id: Optional[int] = None):
+    if not TRI_OK:
+        raise HTTPException(500, "engine not available")
+    if user_id:
+        eng = app.state.tri_engines.get(int(user_id))
+        if eng and getattr(eng, "cfg", None):
+            return eng.cfg.__dict__
+        saved = load_user_tri_config(int(user_id))
+        if saved:
+            return saved
+    # fallback 기존 동작
     cfg_path = Path(__file__).resolve().parents[1] / "config.json"
     try:
         if cfg_path.exists() and TriConfig:
@@ -728,9 +848,11 @@ def tri_set_config(req: Request, body: Dict[str, Any]):
     _require_admin_token(req)
     if not TRI_OK:
         raise HTTPException(500, "engine not available")
-    routes = body.get("routes") or []
+    target_user_id = int(body.get("target_user_id") or 0)
+    if not target_user_id:
+        raise HTTPException(400, "target_user_id required")
     cfg = TriConfig(
-        routes=routes,
+        routes=body.get("routes") or [],
         capital_usdt=float(body.get("capital_usdt", 1000)),
         max_alloc_frac=float(body.get("max_alloc_frac", 0.2)),
         min_edge_bp=float(body.get("min_edge_bp", 10.0)),
@@ -742,43 +864,69 @@ def tri_set_config(req: Request, body: Dict[str, Any]):
         simulate=bool(body.get("simulate", True)),
         ws_endpoint=str(body.get("ws_endpoint", "wss://stream.binance.com:9443/stream")),
     )
+    cfg.__dict__["target_user_id"] = target_user_id
+    # 저장
+    save_user_tri_config(target_user_id, cfg.__dict__)
     # 실행 중이면 즉시 반영
-    eng = app.state.tri_engine
+    eng = app.state.tri_engines.get(target_user_id)
     if eng:
         eng.cfg = cfg
-    # 파일 저장(optional)
-    try:
-        cfg_path = Path(__file__).resolve().parents[1] / "config.json"
-        cfg_path.write_text(json.dumps(cfg.__dict__, ensure_ascii=False, indent=2))
-    except Exception:
-        pass
     return {"ok": True, "config": cfg.__dict__}
 
 @api.post("/tri/start")
-def tri_start(req: Request):
+def tri_start(req: Request, body: Dict[str, Any] = None):
     _require_admin_token(req)
     if not TRI_OK:
         raise HTTPException(500, "engine not available")
+    body = body or {}
+    user_id = int(body.get("user_id") or body.get("target_user_id") or 0)
+    if not user_id:
+        raise HTTPException(400, "user_id required")
+    # 키 선택
     api_key = os.getenv("BINANCE_API_KEY", "")
     api_secret = os.getenv("BINANCE_API_SECRET", "")
-    # cfg 로드(엔진이 없으면 파일/기본)
-    if app.state.tri_engine:
-        eng = app.state.tri_engine
+    k, s = _get_user_api_keys("binance", user_id)
+    if k and s: api_key, api_secret = k, s
+    # config 로드
+    saved = load_user_tri_config(user_id)
+    if not saved:
+        saved = tri_get_config()  # global default
+    cfg = TriConfig(**saved)
+    cfg.__dict__["target_user_id"] = user_id
+    # 엔진 준비/시작
+    eng = app.state.tri_engines.get(user_id)
+    if eng and getattr(eng, "running", False):
+        return {"ok": True, "running": True, "user_id": user_id}
+    if not eng:
+        eng = TriArbEngine(cfg, api_key, api_secret)
+        app.state.tri_engines[user_id] = eng
     else:
-        cfg = tri_get_config()
-        eng = TriArbEngine(TriConfig(**cfg), api_key, api_secret)
-        app.state.tri_engine = eng
-    if not eng.running:
-        eng.start()
-    return {"ok": True, "running": True}
+        eng.cfg = cfg
+    eng.start()
+    return {"ok": True, "running": True, "user_id": user_id}
 
 @api.post("/tri/stop")
-def tri_stop(req: Request):
+def tri_stop(req: Request, body: Dict[str, Any] = None):
     _require_admin_token(req)
-    eng = app.state.tri_engine
-    if eng and eng.running:
+    body = body or {}
+    user_id = int(body.get("user_id") or body.get("target_user_id") or 0)
+    if not user_id:
+        raise HTTPException(400, "user_id required")
+    eng = app.state.tri_engines.get(user_id)
+    if eng and getattr(eng, "running", False):
         eng.stop()
-    return {"ok": True, "running": False}
+    return {"ok": True, "running": False, "user_id": user_id}
+
+@api.post("/tri/stop_all")
+def tri_stop_all(req: Request):
+    _require_admin_token(req)
+    for uid, eng in list(app.state.tri_engines.items()):
+        try:
+            if eng and getattr(eng, "running", False):
+                eng.stop()
+        except Exception:
+            pass
+    return {"ok": True}
 
 # 필요한 모듈
 import json

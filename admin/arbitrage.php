@@ -43,28 +43,53 @@ if (($_SESSION['role'] ?? 'user') !== 'admin') {
   <div class="card mb-4">
     <div class="card-header">설정</div>
     <div class="card-body row g-3">
+      <div class="col-md-4">
+        <label class="form-label">대상 사용자</label>
+        <select id="targetUser" class="form-select">
+          <option value="">(선택)</option>
+        </select>
+      </div>
       <div class="col-12">
-        <label class="form-label">심볼(콤마로 구분, 예: BTC/USDT, XRP/USDT, BIT/USDT)</label>
-        <input id="symbols" class="form-control" placeholder="BTC/USDT, XRP/USDT, BIT/USDT">
+        <label class="form-label">심볼(콤마로 구분, 예: BTC-ETH-USDT, BNB-BTC-USDT, XRP-BTC-USDT)</label>
+        <input id="symbols" class="form-control" placeholder="BTC-ETH-USDT, BNB-BTC-USDT, XRP-BTC-USDT">
       </div>
       <div class="col-md-3">
         <label class="form-label">최소 스프레드(bp)</label>
-        <input id="minSpreadBp" type="number" class="form-control" value="30">
+        <input id="minSpreadBp" type="number" class="form-control" value="10">
       </div>
       <div class="col-md-3">
-        <label class="form-label">Upbit 테이커 수수료(bp)</label>
-        <input id="feeUpbit" type="number" class="form-control" value="8">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">Binance 테이커 수수료(bp)</label>
-        <input id="feeBinance" type="number" class="form-control" value="10">
+        <label class="form-label">Binance 메이커 수수료(bp)</label>
+        <input id="feeBinance" type="number" class="form-control" value="7.5">
       </div>
       <div class="col-md-3">
         <label class="form-label">주기(초)</label>
-        <input id="intervalSec" type="number" class="form-control" value="15">
+        <input id="intervalSec" type="number" class="form-control" value="1">
       </div>
       <div class="col-12">
         <button id="btnSave" class="btn btn-primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>엔진 현황(다중 사용자)</span>
+      <button id="btnReloadEngines" class="btn btn-outline-secondary btn-sm">새로고침</button>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-striped align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>사용자</th>
+              <th>상태</th>
+              <th>루트</th>
+              <th>시뮬레이트</th>
+              <th class="text-nowrap">액션</th>
+            </tr>
+          </thead>
+          <tbody id="enginesBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
