@@ -30,6 +30,7 @@ if (($_SESSION['role'] ?? 'user') !== 'admin') {
         <a class="navbar-brand fw-bold" href="/dashboard.php"><i class="bi bi-arrow-left-circle me-2"></i>대시보드</a>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav ms-auto">
+                <li class="nav-item"><a class="nav-link" href="/admin/arbitrage.php"><i class="bi bi-lightning"></i> 아비트리지</a></li>
                 <li class="nav-item"><a class="nav-link" href="/php/logout.php"><i class="bi bi-box-arrow-right"></i> 로그아웃</a></li>
             </ul>
         </div>

@@ -4,7 +4,7 @@ from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ccxt
@@ -479,3 +479,209 @@ def root():
 app.include_router(api)
 
 # 개발 실행: uvicorn python.app.main:app --reload --host 0.0.0.0 --port 8000
+
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
+
+def _require_admin_token(req: Request):
+    if not ADMIN_TOKEN:
+        return
+    tok = req.headers.get("X-Admin-Token", "")
+    if tok != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+class ArbConfigIn(BaseModel):
+    symbols: List[str] = []
+    minSpreadBp: float = 30.0
+    takerFeeBpUpbit: float = 8.0
+    takerFeeBpBinance: float = 10.0
+    intervalSec: int = 15
+
+class ArbEngine:
+    def __init__(self):
+        self.running = False
+        self.config = ArbConfigIn()
+        self._task: Optional[asyncio.Task] = None
+        self._last_signal_ts = {}
+
+    def set_config(self, cfg: ArbConfigIn):
+        self.config = cfg
+
+    async def start(self, app):
+        if self.running:
+            return
+        self.running = True
+        loop = asyncio.get_running_loop()
+        self._task = loop.create_task(self._loop(app))
+
+    async def stop(self):
+        self.running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except Exception:
+                pass
+            self._task = None
+
+    async def _loop(self, app):
+        while self.running:
+            try:
+                await self._tick()
+            except Exception as e:
+                # 엔진 오류는 로그만 남기고 계속
+                print("[arb] loop error:", e)
+            await asyncio.sleep(max(1, int(self.config.intervalSec or 15)))
+
+    def _ccxt_client(self):
+        up = ccxt.upbit({
+            "apiKey": UPBIT_ACCESS_KEY, "secret": UPBIT_SECRET_KEY,
+            "timeout": CCXT_TIMEOUT_MS,
+        })
+        bz = ccxt.binance({
+            "apiKey": BINANCE_API_KEY, "secret": BINANCE_API_SECRET,
+            "options": {"adjustForTimeDifference": True},
+            "timeout": CCXT_TIMEOUT_MS,
+        })
+        return up, bz
+
+    def _spread_bp(self, buy_px: float, sell_px: float, fee_bp_buy: float, fee_bp_sell: float) -> float:
+        # (sell - buy)/buy * 10000 - (수수료합 bp)
+        if buy_px <= 0 or sell_px <= 0:
+            return -1e9
+        gross_bp = (sell_px - buy_px) / buy_px * 10000.0
+        return gross_bp - (fee_bp_buy + fee_bp_sell)
+
+    async def _tick(self):
+        cfg = self.config
+        if not cfg.symbols:
+            return
+        up, bz = self._ccxt_client()
+        for sym in cfg.symbols:
+            sym = sym.strip()
+            if not sym:
+                continue
+            up_px = None
+            bz_px = None
+            try:
+                up_px = float((up.fetch_ticker(sym) or {}).get("last") or 0)
+            except Exception:
+                up_px = None
+            try:
+                bz_px = float((bz.fetch_ticker(sym) or {}).get("last") or 0)
+            except Exception:
+                bz_px = None
+            if not up_px or not bz_px:
+                continue
+
+            # 두 방향 스프레드 계산
+            bp_u2b = self._spread_bp(up_px, bz_px, cfg.takerFeeBpUpbit, cfg.takerFeeBpBinance)   # Upbit 매수 -> Binance 매도
+            bp_b2u = self._spread_bp(bz_px, up_px, cfg.takerFeeBpBinance, cfg.takerFeeBpUpbit)   # Binance 매수 -> Upbit 매도
+            best_bp = bp_u2b
+            side = "UP->BZ"
+            if bp_b2u > best_bp:
+                best_bp = bp_b2u
+                side = "BZ->UP"
+
+            now = int(datetime.utcnow().timestamp())
+            last = self._last_signal_ts.get(sym, 0)
+            if best_bp >= cfg.minSpreadBp and (now - last) >= max(5, cfg.intervalSec):
+                self._last_signal_ts[sym] = now
+                # 시그널 기록
+                try:
+                    conn = get_db()
+                    cur = conn.cursor()
+                    # trades 테이블을 시그널 로그로 재사용(type='signal', profit=스프레드bp)
+                    cur.execute(
+                        "INSERT INTO trades (user_id, time, type, amount, profit) VALUES (%s, NOW(), %s, %s, %s)",
+                        (0, f"signal:{sym}:{side}", 0, float(best_bp))
+                    )
+                    conn.close()
+                except Exception as e:
+                    print("[arb] write signal error:", e)
+
+arb = ArbEngine()
+# 애플리케이션 상태에 참조 저장
+app.state.arb_engine = arb
+
+@api.get("/arb/status")
+def arb_status():
+    eng: ArbEngine = arb
+    # 최근 시그널 개수(최근 1일)
+    recent = 0
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) AS c FROM trades WHERE type LIKE %s AND time >= NOW() - INTERVAL 1 DAY", ("signal:%",))
+        row = cur.fetchone()
+        conn.close()
+        recent = int((row.get("c") if isinstance(row, dict) else row[0]) or 0)
+    except Exception:
+        recent = 0
+    return {
+        "running": eng.running,
+        "config": eng.config.model_dump(),
+        "recentSignals": recent,
+    }
+
+@api.get("/arb/config")
+def arb_get_config():
+    return arb.config.model_dump()
+
+@api.post("/arb/config")
+def arb_set_config(cfg: ArbConfigIn, req: Request):
+    _require_admin_token(req)
+    arb.set_config(cfg)
+    # 필요 시 DB에 영구 저장(최초 시도 시 테이블 자동 생성)
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS arb_config (
+            id INT PRIMARY KEY DEFAULT 1,
+            json TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;""")
+        cur.execute("REPLACE INTO arb_config (id, json) VALUES (1, %s)", (json.dumps(cfg.model_dump(), ensure_ascii=False),))
+        conn.close()
+    except Exception as e:
+        print("[arb] save config error:", e)
+    return {"ok": True}
+
+@api.post("/arb/start")
+async def arb_start(req: Request):
+    _require_admin_token(req)
+    await arb.start(app)
+    return {"ok": True, "running": True}
+
+@api.post("/arb/stop")
+async def arb_stop(req: Request):
+    _require_admin_token(req)
+    await arb.stop()
+    return {"ok": True, "running": False}
+
+@api.get("/arb/signals")
+def arb_signals():
+    # 최근 50개
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT time, type, profit FROM trades WHERE type LIKE %s ORDER BY time DESC LIMIT 50", ("signal:%",))
+        rows = cur.fetchall()
+        conn.close()
+        out = []
+        for r in rows:
+            t = r["type"] if isinstance(r, dict) else r[1]
+            parts = (t or "").split(":")
+            sym = parts[1] if len(parts) >= 2 else ""
+            side = parts[2] if len(parts) >= 3 else ""
+            out.append({
+                "time": (r["time"] if isinstance(r, dict) else r[0]),
+                "symbol": sym,
+                "side": side,
+                "spread_bp": float(r["profit"] if isinstance(r, dict) else r[2]),
+            })
+        return out
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
+
+# 필요한 모듈
+import json
