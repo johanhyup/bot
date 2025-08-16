@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from typing import Dict as _Dict
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ccxt
@@ -106,7 +106,19 @@ def get_db():
         cursorclass=DictCursor,
     )
 
+# (추가) 로깅용
+import sys
+
 app = FastAPI(title="Bot API", version="1.0.0")
+
+# (추가) 직접 핑/레디니스 별칭
+@app.get("/ping")
+def _ping():
+    return {"ok": True}
+
+@app.get("/api/ready2")
+def _ready2():
+    return {"ok": True, "time": datetime.utcnow().isoformat(), "via": "app-root"}
 
 # CORS: 프런트가 동일 호스트에서 reverse proxy되면 origins 제한 가능
 app.add_middleware(
@@ -125,11 +137,14 @@ app.state.tri_engines: _Dict[int, object] = {}
 
 @app.on_event("startup")
 async def _startup():
+    print("[uvicorn] startup: initializing stream tasks...", file=sys.stderr, flush=True)  # (추가) 로그
     loop = asyncio.get_running_loop()
     app.state.stream_tasks = start_stream_tasks(loop, price_store)
+    print("[uvicorn] startup: done", file=sys.stderr, flush=True)  # (추가) 로그
 
 @app.on_event("shutdown")
 async def _shutdown():
+    print("[uvicorn] shutdown: stopping tasks...", file=sys.stderr, flush=True)  # (추가) 로그
     await stop_tasks(app.state.stream_tasks)
     # (추가) 모든 tri 엔진 중지
     try:
@@ -141,6 +156,7 @@ async def _shutdown():
                 pass
     except Exception:
         pass
+    print("[uvicorn] shutdown: done", file=sys.stderr, flush=True)  # (추가) 로그
 
 def sum_balances_portfolio(bal: Dict[str, Any], symbols: List[str]) -> Dict[str, float]:
     out = {s: 0.0 for s in symbols}
@@ -896,17 +912,28 @@ def tri_start(req: Request, body: Dict[str, Any] = Body(default={})):
     user_id = int(body.get("user_id") or body.get("target_user_id") or 0)
     if not user_id:
         raise HTTPException(400, "user_id required")
+
+    # 키 선택(사용자별 키 우선)
     api_key = os.getenv("BINANCE_API_KEY", "")
     api_secret = os.getenv("BINANCE_API_SECRET", "")
     k, s = _get_user_api_keys("binance", user_id)
     if k and s:
         api_key, api_secret = k, s
+
+    # config 로드
     saved = load_user_tri_config(user_id) or tri_get_config()
     cfg = TriConfig(**saved)
     cfg.__dict__["target_user_id"] = user_id
+
+    # 엔진 준비/시작
     eng = app.state.tri_engines.get(user_id)
     if eng and getattr(eng, "running", False):
         return {"ok": True, "running": True, "user_id": user_id}
     if not eng:
         eng = TriArbEngine(cfg, api_key, api_secret)
-        app
+        app.state.tri_engines[user_id] = eng
+    else:
+        eng.cfg = cfg
+
+    eng.start()
+    return {"ok": True, "running": True, "user_id": user_id}
