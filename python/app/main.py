@@ -41,20 +41,65 @@ DASHBOARD_TIMEOUT_MS = int(os.getenv("DASHBOARD_TIMEOUT_MS", "5000"))
 
 from .stream import PriceStore, start_stream_tasks, stop_tasks
 
-# MySQL 접속 정보(.env에서 주입)
-DB_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
-DB_NAME = os.getenv("MYSQL_DB", "botdb")
-DB_USER = os.getenv("MYSQL_USER", "botuser")
-DB_PASS = os.getenv("MYSQL_PASS", "")
+# (추가) 환경 로더: .env 다중 경로 + PHP config 파싱으로 보강
+import re
+def _reload_env():
+    try:
+        # python-dotenv 재로딩(override)
+        for p in [
+            BASE_DIR / "python" / ".env",
+            BASE_DIR / ".env",
+        ]:
+            if p.exists():
+                load_dotenv(p, override=True)
+    except Exception:
+        pass
 
+    # php/config.php에서 DB 상수 보강
+    cfg = BASE_DIR / "php" / "config.php"
+    if cfg.exists():
+        try:
+            txt = cfg.read_text(encoding="utf-8", errors="ignore")
+            def pick(name):
+                m = re.search(r"define\(\s*['\"]" + re.escape(name) + r"['\"]\s*,\s*['\"](.+?)['\"]\s*\)\s*;", txt)
+                return m.group(1) if m else None
+            for env_name, php_const in [
+                ("MYSQL_HOST", "DB_HOST"),
+                ("MYSQL_DB",   "DB_NAME"),
+                ("MYSQL_USER", "DB_USER"),
+                ("MYSQL_PASS", "DB_PASS"),
+            ]:
+                if not os.getenv(env_name):
+                    v = pick(php_const)
+                    if v:
+                        os.environ[env_name] = v
+        except Exception:
+            pass
+
+# 모듈 로드 시 1회 보강
+_reload_env()
+
+# MySQL 접속 정보(.env에서 주입) → get_db 안에서 즉시 읽기
 def get_db():
     if not PYMYSQL_OK:
         raise RuntimeError("PyMySQL not installed")
+    host = os.getenv("MYSQL_HOST", "127.0.0.1")
+    name = os.getenv("MYSQL_DB", "botdb")
+    user = os.getenv("MYSQL_USER", "botuser")
+    pw   = os.getenv("MYSQL_PASS", "")
+
+    if not pw:
+        # 환경 재시도(서비스 재시작 없이 갱신될 수 있으므로)
+        _reload_env()
+        pw = os.getenv("MYSQL_PASS", "")
+        if not pw:
+            print("[warn] MYSQL_PASS 비어있음. php/config.php나 .env 확인 필요.")
+
     return pymysql.connect(
-        host=DB_HOST,
-        user=DB_USER,
-        password=DB_PASS,
-        database=DB_NAME,
+        host=host,
+        user=user,
+        password=pw,
+        database=name,
         charset="utf8mb4",
         autocommit=True,
         cursorclass=DictCursor,
@@ -274,7 +319,7 @@ async def health():
     return {
         "ok": db_ok,
         "time": datetime.utcnow().isoformat(),
-        "db": {"ok": db_ok, "error": db_err},
+        "db": {"ok": db_ok, "error": db_err, "host": os.getenv("MYSQL_HOST"), "user": os.getenv("MYSQL_USER"), "has_pass": bool(os.getenv("MYSQL_PASS"))},
         "ws": {"fresh": fresh},
         "version": "1.0.0",
     }
