@@ -597,7 +597,7 @@ class ArbEngine:
             bp_b2u = self._spread_bp(bz_px, up_px, cfg.takerFeeBpBinance, cfg.takerFeeBpUpbit)   # Binance 매수 -> Upbit 매도
             best_bp = bp_u2b
             side = "UP->BZ"
-            if bp_b2u > best_bp:
+            if (bp_b2u > best_bp):
                 best_bp = bp_b2u
                 side = "BZ->UP"
 
@@ -856,6 +856,9 @@ def tri_get_config(user_id: Optional[int] = None):
     return {"routes": ["BTC-ETH-USDT"], "capital_usdt": 1000, "max_alloc_frac": 0.2, "min_edge_bp": 10.0, "maker_fee_bp": 7.5, "use_bnb_discount": True, "depth_levels": 5, "interval_ms": 100, "volatility_stop_pct": 5.0, "simulate": True, "ws_endpoint": "wss://stream.binance.com:9443/stream"}
 
 @api.post("/tri/config")
+@api.post("/tri/config/")
+@api.post("/tri/save")
+@api.post("/tri/config/set")
 def tri_set_config(req: Request, body: Dict[str, Any] = Body(...)):
     _require_admin_token(req)
     if not TRI_OK:
@@ -877,15 +880,14 @@ def tri_set_config(req: Request, body: Dict[str, Any] = Body(...)):
         ws_endpoint=str(body.get("ws_endpoint", "wss://stream.binance.com:9443/stream")),
     )
     cfg.__dict__["target_user_id"] = target_user_id
-    # 저장
     save_user_tri_config(target_user_id, cfg.__dict__)
-    # 실행 중이면 즉시 반영
     eng = app.state.tri_engines.get(target_user_id)
     if eng:
         eng.cfg = cfg
     return {"ok": True, "config": cfg.__dict__}
 
 @api.post("/tri/start")
+@api.post("/tri/start/")
 def tri_start(req: Request, body: Dict[str, Any] = Body(default={})):
     _require_admin_token(req)
     if not TRI_OK:
@@ -894,51 +896,17 @@ def tri_start(req: Request, body: Dict[str, Any] = Body(default={})):
     user_id = int(body.get("user_id") or body.get("target_user_id") or 0)
     if not user_id:
         raise HTTPException(400, "user_id required")
-    # 키 선택
     api_key = os.getenv("BINANCE_API_KEY", "")
     api_secret = os.getenv("BINANCE_API_SECRET", "")
     k, s = _get_user_api_keys("binance", user_id)
-    if k and s: api_key, api_secret = k, s
-    # config 로드
-    saved = load_user_tri_config(user_id)
-    if not saved:
-        saved = tri_get_config()  # global default
+    if k and s:
+        api_key, api_secret = k, s
+    saved = load_user_tri_config(user_id) or tri_get_config()
     cfg = TriConfig(**saved)
     cfg.__dict__["target_user_id"] = user_id
-    # 엔진 준비/시작
     eng = app.state.tri_engines.get(user_id)
     if eng and getattr(eng, "running", False):
         return {"ok": True, "running": True, "user_id": user_id}
     if not eng:
         eng = TriArbEngine(cfg, api_key, api_secret)
-        app.state.tri_engines[user_id] = eng
-    else:
-        eng.cfg = cfg
-    eng.start()
-    return {"ok": True, "running": True, "user_id": user_id}
-
-@api.post("/tri/stop")
-def tri_stop(req: Request, body: Dict[str, Any] = Body(default={})):
-    _require_admin_token(req)
-    body = body or {}
-    user_id = int(body.get("user_id") or body.get("target_user_id") or 0)
-    if not user_id:
-        raise HTTPException(400, "user_id required")
-    eng = app.state.tri_engines.get(user_id)
-    if eng and getattr(eng, "running", False):
-        eng.stop()
-    return {"ok": True, "running": False, "user_id": user_id}
-
-@api.post("/tri/stop_all")
-def tri_stop_all(req: Request):
-    _require_admin_token(req)
-    for uid, eng in list(app.state.tri_engines.items()):
-        try:
-            if eng and getattr(eng, "running", False):
-                eng.stop()
-        except Exception:
-            pass
-    return {"ok": True}
-
-# 필요한 모듈
-import json
+        app
