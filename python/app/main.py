@@ -29,7 +29,9 @@ try:
 except Exception:
     pass
 
-BASE_DIR = Path(__file__).resolve().parents[2]  # /Users/joko/bot
+import json  # (추가) 사용 중인 json 임포트
+
+BASE_DIR = Path(__file__).resolve().parents[2]  # /var/www/bot/bot
 DB_PATH = BASE_DIR / "php" / "database.db"
 
 UPBIT_ACCESS_KEY = os.getenv("UPBIT_ACCESS_KEY", "")
@@ -223,31 +225,31 @@ def upbit_total_usdt_valuation() -> float:
     # ccxt 심볼 규칙: BASE/QUOTE
     usdt_krw = price_safe(up, ["USDT/KRW"])
     krw_to_usdt = None
-    if usdt_krw and usdt_krw > 0:
+    if (usdt_krw and usdt_krw > 0):
         krw_to_usdt = 1.0 / usdt_krw
     else:
         btc_usdt = price_safe(up, ["BTC/USDT"])
         btc_krw = price_safe(up, ["BTC/KRW"])
-        if btc_usdt and btc_krw and btc_krw > 0:
+        if (btc_usdt and btc_krw and btc_krw > 0):
             krw_to_usdt = btc_usdt / btc_krw
 
     total = 0.0
     # USDT 자체
     total += b["USDT"]
     # KRW 환산
-    if b["KRW"] > 0:
+    if (b["KRW"] > 0):
         if not krw_to_usdt:
             raise RuntimeError("Upbit KRW→USDT 환산 실패")
         total += b["KRW"] * krw_to_usdt
     # XRP
-    if b["XRP"] > 0:
+    if (b["XRP"] > 0):
         px = price_safe(up, ["XRP/USDT"]) or (price_safe(up, ["XRP/KRW"]) * krw_to_usdt if krw_to_usdt else None) or \
              (price_safe(up, ["XRP/BTC"]) * price_safe(up, ["BTC/USDT"]))
         if not px:
             raise RuntimeError("Upbit XRP 가격 조회 실패")
         total += b["XRP"] * px
     # BIT
-    if b["BIT"] > 0:
+    if (b["BIT"] > 0):
         px = price_safe(up, ["BIT/USDT"]) or (price_safe(up, ["BIT/KRW"]) * krw_to_usdt if krw_to_usdt else None) or \
              (price_safe(up, ["BIT/BTC"]) * price_safe(up, ["BTC/USDT"]))
         if not px:
@@ -320,11 +322,11 @@ def binance_total_usdt_valuation() -> float:
     # 가격
     xrp_px = price_safe(bz, ["XRP/USDT"])
     bit_px = price_safe(bz, ["BIT/USDT"])
-    if amounts["XRP"] > 0:
+    if (amounts["XRP"] > 0):
         if not xrp_px:
             raise RuntimeError("Binance XRPUSDT 가격 조회 실패")
         total += amounts["XRP"] * xrp_px
-    if amounts["BIT"] > 0:
+    if (amounts["BIT"] > 0):
         if not bit_px:
             raise RuntimeError("Binance BITUSDT 가격 조회 실패")
         total += amounts["BIT"] * bit_px
@@ -636,7 +638,7 @@ class ArbEngine:
 
             now = int(datetime.utcnow().timestamp())
             last = self._last_signal_ts.get(sym, 0)
-            if best_bp >= cfg.minSpreadBp and (now - last) >= max(5, cfg.intervalSec):
+            if (best_bp >= cfg.minSpreadBp and (now - last) >= max(5, cfg.intervalSec)):
                 self._last_signal_ts[sym] = now
                 # 시그널 기록
                 try:
@@ -677,8 +679,6 @@ def arb_status():
 
 @api.get("/arb/config")
 def arb_get_config():
-    return arb.config.model_dump()
-
 @api.post("/arb/config")
 def arb_set_config(cfg: ArbConfigIn, req: Request):
     _require_admin_token(req)

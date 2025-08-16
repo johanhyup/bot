@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="/var/www/bot/bot"
-VENV="${ROOT}/venv"
+VENV="/var/www/bot/.venv-bot"
 APP="python.app.main:app"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
 
+bash "${SCRIPT_DIR}/bootstrap_venv.sh"
+
 cd "$ROOT"
-
-if [[ ! -x "${VENV}/bin/python" ]]; then
-  echo "[run] venv not found. Run: bash /Users/joko/bot/scripts/create_venv.sh" >&2
-  exit 1
-fi
-
 # shellcheck disable=SC1090
 source "${VENV}/bin/activate"
 export PYTHONUNBUFFERED=1
