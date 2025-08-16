@@ -679,6 +679,8 @@ def arb_status():
 
 @api.get("/arb/config")
 def arb_get_config():
+    return arb.config.model_dump()
+
 @api.post("/arb/config")
 def arb_set_config(cfg: ArbConfigIn, req: Request):
     _require_admin_token(req)
