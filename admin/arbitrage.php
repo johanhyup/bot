@@ -44,7 +44,10 @@ if (($_SESSION['role'] ?? 'user') !== 'admin') {
     <div class="card-header">설정</div>
     <div class="card-body row g-3">
       <div class="col-md-4">
-        <label class="form-label">대상 사용자</label>
+        <label class="form-label d-flex align-items-center justify-content-between">
+          <span>대상 사용자</span>
+          <button type="button" id="btnReloadUsers" class="btn btn-sm btn-outline-secondary">새로고침</button>
+        </label>
         <select id="targetUser" class="form-select">
           <option value="">(선택)</option>
         </select>

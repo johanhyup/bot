@@ -1,13 +1,17 @@
 const H = {
   get headers() {
-    const h = { 'Content-Type': 'application/json' };
+    const h = {};
     if (window.ADMIN_TOKEN) h['X-Admin-Token'] = window.ADMIN_TOKEN;
     return h;
   }
 };
 
 async function fetchJSON(url, opt = {}) {
-  const res = await fetch(url, { ...opt, headers: { ...(opt.headers || {}), ...H.headers } });
+  const method = (opt.method || 'GET').toUpperCase();
+  const baseHeaders = H.headers;
+  const bodyHeaders = (method !== 'GET' && method !== 'HEAD') ? { 'Content-Type': 'application/json' } : {};
+  const headers = { ...(opt.headers || {}), ...baseHeaders, ...bodyHeaders };
+  const res = await fetch(url, { ...opt, headers, credentials: 'same-origin' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -42,8 +46,10 @@ async function ensureAdminToken() {
 
 async function loadUsers() {
   try {
-    const rows = await fetchJSON('/php/api/users.php');
+    // 캐시 회피 파라미터 추가
+    const rows = await fetchJSON(`/php/api/users.php?_=${Date.now()}`);
     const sel = document.getElementById('targetUser');
+    const prev = sel.value;
     sel.innerHTML = '<option value="">(선택)</option>';
     rows.forEach(u => {
       const opt = document.createElement('option');
@@ -51,6 +57,8 @@ async function loadUsers() {
       opt.textContent = `${u.id} - ${u.username} (${u.name})`;
       sel.appendChild(opt);
     });
+    // 기존 선택값 유지
+    if (prev) sel.value = prev;
   } catch (e) {
     console.error('users load failed', e);
     alert('사용자 목록을 불러오지 못했습니다.');
@@ -99,3 +107,17 @@ async function loadEngines() {
     });
   } catch (e) {
     // 404 → 구서버 호환 폴백
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  ensureAdminToken().then(() => {
+    loadUsers().then(() => {
+      loadStatus();
+      loadEngines();
+      loadSignals();
+    });
+  });
+  const btnRU = document.getElementById('btnReloadUsers');
+  if (btnRU) btnRU.addEventListener('click', loadUsers);
+});
