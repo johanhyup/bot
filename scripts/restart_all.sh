@@ -10,6 +10,9 @@ PORT="${PORT:-8000}"
 
 mkdir -p "${LOG_DIR}"
 
+# (추가) 권한 보정
+chmod +x "${SCRIPT_DIR}/"*.sh || true
+
 echo "[restart] bootstrap venv"
 bash "${SCRIPT_DIR}/bootstrap_venv.sh"
 
@@ -21,4 +24,5 @@ echo "[restart] import check"
 bash "${SCRIPT_DIR}/check_api_import.sh"
 
 echo "[restart] start uvicorn in foreground"
-exec "${SCRIPT_DIR}/run_uvicorn.sh"
+# (변경) bash로 실행
+exec bash "${SCRIPT_DIR}/run_uvicorn.sh"

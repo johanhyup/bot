@@ -21,22 +21,25 @@ ensure_venv() {
     # shellcheck disable=SC1090
     source "${VENV}/bin/activate"
     pip install -U pip setuptools wheel
-    pip install -r "${REQ}"
-    hash_file "${REQ}" > "${REQ_HASH_FILE}"
+    if [[ -f "${REQ}" ]]; then
+      pip install -r "${REQ}"
+      hash_file "${REQ}" > "${REQ_HASH_FILE}"
+    fi
     echo "[venv] created"
   else
     # shellcheck disable=SC1090
     source "${VENV}/bin/activate"
-    local new_hash old_hash
-    new_hash="$(hash_file "${REQ}")"
-    old_hash="$(cat "${REQ_HASH_FILE}" 2>/dev/null || echo '')"
-    if [[ "${new_hash}" != "${old_hash}" ]]; then
-      echo "[venv] requirements changed → installing"
-      pip install -r "${REQ}"
-      echo "${new_hash}" > "${REQ_HASH_FILE}"
-      echo "[venv] updated"
-    else
-      echo "[venv] up-to-date"
+    if [[ -f "${REQ}" ]]; then
+      new_hash="$(hash_file "${REQ}")"
+      old_hash="$(cat "${REQ_HASH_FILE}" 2>/dev/null || echo '')"
+      if [[ "${new_hash}" != "${old_hash}" ]]; then
+        echo "[venv] requirements changed → installing"
+        pip install -r "${REQ}"
+        echo "${new_hash}" > "${REQ_HASH_FILE}"
+        echo "[venv] updated"
+      else
+        echo "[venv] up-to-date"
+      fi
     fi
   fi
 }
