@@ -26,12 +26,23 @@ if (file_exists($envFile)) {
 // ---------- 로깅 ----------
 function log_error(string $msg): void
 {
-    if (!is_dir(BOT_LOG_DIR)) {
-        mkdir(BOT_LOG_DIR, 0750, true);
+    $dir = BOT_LOG_DIR;
+    if (!is_dir($dir) && !mkdir($dir, 0775, true)) {     // 0755 → 0775
+        // 폴더 생성 실패 시 임시 경로로 Fallback
+        $dir = sys_get_temp_dir() . '/bot_logs';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
     }
-    $file = BOT_LOG_DIR . '/error.log';
+
+    $file  = $dir . '/error.log';
     $entry = sprintf("[%s] %s\n", date('Y-m-d H:i:s'), $msg);
     file_put_contents($file, $entry, FILE_APPEND | LOCK_EX);
+
+    // 파일 권한을 0664 로 맞춤(첫 생성 시 한 번만 실행됨)
+    if (file_exists($file)) {
+        @chmod($file, 0664);
+    }
 }
 
 // ---------- DB ----------

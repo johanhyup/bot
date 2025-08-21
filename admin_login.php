@@ -44,5 +44,7 @@ if (isset($_SESSION['user_id']) && ($_SESSION['role'] ?? 'user') === 'admin') {
         </div>
     </div>
     <script src="/js/login.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="/js/ajax_debug.js"></script>
 </body>
 </html>
