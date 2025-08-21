@@ -20,97 +20,125 @@ if (!$userName) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>아비트라지 매매 시스템 - 대시보드</title>
-    <link rel="stylesheet" href="styles/dashboard.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>암호화폐 대시보드</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm">
-        <div class="container-fluid">
-            <a class="navbar-brand fw-bold" href="#"><i class="bi bi-graph-up me-2"></i>아비트라지 시스템</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/admin/"><i class="bi bi-gear"></i> 관리자 페이지</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="php/logout.php"><i class="bi bi-box-arrow-right"></i> 로그아웃</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container mt-5">
-        <h1 class="text-center mb-4 fw-bold"><?= htmlspecialchars($userName) ?>님 환영합니다</h1>
-
-        <div class="row gy-4">
-            <div class="col-md-4">
-                <div class="card border-0 shadow h-100 rounded-3">
-                    <div class="card-body text-center">
-                        <i class="bi bi-wallet2 display-4 text-success mb-3"></i>
-                        <h5 class="card-title">업비트 평가액(USDT)</h5>
-                        <p class="card-text fs-3 fw-bold" id="upbitBalance">로딩 중...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card border-0 shadow h-100 rounded-3">
-                    <div class="card-body text-center">
-                        <i class="bi bi-currency-bitcoin display-4 text-primary mb-3"></i>
-                        <h5 class="card-title">바이낸스 평가액(USDT)</h5>
-                        <p class="card-text fs-3 fw-bold" id="binanceBalance">로딩 중...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card border-0 shadow h-100 rounded-3">
-                    <div class="card-body text-center">
-                        <i class="bi bi-bar-chart-line-fill display-4 text-warning mb-3"></i>
-                        <h5 class="card-title">누적 수익금</h5>
-                        <p class="card-text fs-3 fw-bold" id="cumulativeProfit">로딩 중...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mt-5">
+    <div class="container mt-4">
+        <h1 class="mb-4">암호화폐 포트폴리오</h1>
+        
+        <div class="row mb-4">
             <div class="col-md-6">
-                <h2 class="mb-3 fw-bold">오늘 매매 내역</h2>
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover rounded-3 overflow-hidden">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>시간</th>
-                                <th>거래 유형</th>
-                                <th>금액</th>
-                                <th>수익</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tradeHistory">
-                            <!-- JS로 동적 추가 -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <h2 class="mb-3 fw-bold">수익 추이 그래프</h2>
-                <div class="card border-0 shadow rounded-3">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5>총 평가액</h5>
+                    </div>
                     <div class="card-body">
-                        <canvas id="profitChart" height="200"></canvas>
+                        <h2 id="totalUSDT">로딩 중...</h2>
+                        <p id="totalKRW" class="text-muted">로딩 중...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>업비트 잔고</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="upbitBalance">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>바이낸스 잔고</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="binanceBalance">로딩 중...</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/config.js"></script>
-    <script src="js/dashboard.js"></script>
+    <script>
+    $(document).ready(function() {
+        loadDashboard();
+        
+        // 30초마다 자동 새로고침
+        setInterval(loadDashboard, 30000);
+    });
+    
+    function loadDashboard() {
+        $.ajax({
+            url: '/api/dashboard',
+            method: 'GET',
+            success: function(data) {
+                if (data.status === 'success') {
+                    updateDashboard(data.data);
+                } else {
+                    showError('데이터 로딩 실패');
+                }
+            },
+            error: function(xhr) {
+                showError('데이터 로딩 중 오류가 발생했습니다. HTTP ' + xhr.status + ' ' + xhr.statusText);
+            }
+        });
+    }
+    
+    function updateDashboard(data) {
+        // 총 평가액 업데이트
+        $('#totalUSDT').text(data.total_evaluation.usdt.toLocaleString() + ' USDT');
+        $('#totalKRW').text(data.total_evaluation.krw.toLocaleString() + ' KRW');
+        
+        // 업비트 잔고 업데이트
+        let upbitHtml = '';
+        if (data.upbit.coins.length > 0) {
+            upbitHtml = '<table class="table table-sm">';
+            data.upbit.coins.forEach(coin => {
+                upbitHtml += `<tr>
+                    <td>${coin.currency}</td>
+                    <td>${coin.balance.toLocaleString()}</td>
+                    <td>${coin.usdt_value} USDT</td>
+                </tr>`;
+            });
+            upbitHtml += '</table>';
+            upbitHtml += `<p><strong>총합: ${data.upbit.total_usdt} USDT</strong></p>`;
+        } else {
+            upbitHtml = '<p>잔고가 없거나 로딩 실패</p>';
+        }
+        $('#upbitBalance').html(upbitHtml);
+        
+        // 바이낸스 잔고 업데이트
+        let binanceHtml = '';
+        if (data.binance.coins.length > 0) {
+            binanceHtml = '<table class="table table-sm">';
+            data.binance.coins.forEach(coin => {
+                binanceHtml += `<tr>
+                    <td>${coin.currency}</td>
+                    <td>${coin.balance.toLocaleString()}</td>
+                    <td>${coin.usdt_value} USDT</td>
+                </tr>`;
+            });
+            binanceHtml += '</table>';
+            binanceHtml += `<p><strong>총합: ${data.binance.total_usdt} USDT</strong></p>`;
+        } else {
+            binanceHtml = '<p>잔고가 없거나 로딩 실패</p>';
+        }
+        $('#binanceBalance').html(binanceHtml);
+    }
+    
+    function showError(message) {
+        console.error(message);
+        $('#totalUSDT').text('오류 발생');
+        $('#totalKRW').text(message);
+    }
+    </script>
 </body>
 </html>
