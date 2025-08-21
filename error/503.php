@@ -2,6 +2,16 @@
 // 503 Service Unavailable – 사용자 안내 전용 페이지
 http_response_code(503);
 header('Retry-After: 30');             // 30초 후 재시도 권유
+
+// --- 간이 로깅 ---
+$logDir = __DIR__ . '/logs';
+if (!is_dir($logDir)) {
+    mkdir($logDir, 0750, true);
+}
+$logFile = $logDir . '/503.log';
+$entry   = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $_SERVER['REMOTE_ADDR'] ?? 'unknown', $_SERVER['REQUEST_URI'] ?? '');
+file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX);
+// --- 로깅 끝 ---
 ?>
 <!DOCTYPE html>
 <html lang="ko">

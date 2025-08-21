@@ -1,2 +1,8 @@
 # ...existing rules...
+
+# 민감 파일(.env 등) 직접 접근 차단
+<FilesMatch "^(\.env|\.git|composer\.json|composer\.lock)$">
+    Require all denied
+</FilesMatch>
+
 ErrorDocument 503 /error/503.php
