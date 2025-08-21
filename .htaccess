@@ -5,4 +5,31 @@
     Require all denied
 </FilesMatch>
 
+# php 디렉터리 전체 차단하되 특정 파일만 허용
+<Directory "/var/www/bot/bot/php">
+    Require all denied
+</Directory>
+
+# 필요한 PHP 파일들만 개별 허용
+<Files "login_admin.php">
+    Require all granted
+</Files>
+
+<Files "log_ajax_error.php">
+    Require all granted
+</Files>
+
+# 테스트 파일들 임시 허용
+<Files "health_check.php">
+    Require all granted
+</Files>
+
+<Files "simple_log_test.php">
+    Require all granted
+</Files>
+
+<Files "temp_log_test.php">
+    Require all granted
+</Files>
+
 ErrorDocument 503 /error/503.php
