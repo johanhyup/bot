@@ -18,6 +18,13 @@ if (isset($_SESSION['user_id']) && ($_SESSION['role'] ?? 'user') === 'admin') {
 <body class="d-flex align-items-center justify-content-center vh-100 bg-light">
     <div class="card shadow p-4" style="min-width: 320px; max-width: 420px; width: 100%;">
         <h3 class="text-center mb-3">관리자 로그인</h3>
+
+        <?php if (isset($_GET['error'])) : ?>
+            <div class="alert alert-danger py-2" role="alert">
+                아이디 또는 비밀번호가 올바르지 않습니다.
+            </div>
+        <?php endif; ?>
+
         <form id="loginForm" action="/php/login_admin.php" method="POST" autocomplete="off">
             <div class="mb-3">
                 <label for="username" class="form-label">아이디</label>

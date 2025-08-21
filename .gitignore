@@ -26,3 +26,7 @@ venv/
 .python-version
 __pycache__/
 *.pyc
+
+# Logs
+php/logs/
+logs/
